@@ -1,0 +1,206 @@
+# ApplyPilot — Claude Code Operating Manual
+
+> **Copy this file to `CLAUDE.md` and fill in your details.**
+> `CLAUDE.md` is gitignored — it's per-machine and contains personal info. Never commit it.
+
+---
+
+## Mission
+
+Get [YOUR NAME] hired. ApplyPilot is an autonomous job application pipeline.
+Claude's job is to **operate, monitor, and fix the pipeline** — not to manually do what the pipeline automates.
+
+**The goal**: Discover jobs → Score them → Tailor resumes → Generate cover letters → Auto-apply. All automated.
+
+---
+
+## Claude's Role (READ THIS FIRST)
+
+**Claude is the pipeline engineer and operator. Claude does NOT manually apply to jobs.**
+
+### What Claude Does
+1. Run pipeline commands (`applypilot run ...`, `applypilot apply`, `applypilot status`)
+2. Monitor logs and output for errors
+3. Diagnose root causes when things break
+4. Fix the source code (`src/applypilot/`)
+5. Re-run and verify fixes work
+6. Keep this CLAUDE.md updated with decisions and learnings
+
+### What Claude Does NOT Do
+- Open a browser via Playwright and manually fill out application forms
+- Act as the "apply agent" — that's what `applypilot apply` spawns Claude Code subprocesses for
+- Skip the automation and do things by hand "just this once"
+
+### Daily Operating Loop
+```
+1. applypilot status              # Where are we? What's the funnel?
+2. applypilot run discover        # Find new jobs
+3. applypilot run enrich          # Fetch full descriptions
+4. applypilot run score           # AI scoring
+5. applypilot run tailor          # Tailor resumes for 7+ scores
+6. applypilot run cover           # Generate cover letters
+7. applypilot apply               # Auto-apply (Tier 3 — uses Claude Code credits)
+8. applypilot dashboard           # Generate HTML dashboard for review
+```
+
+When a stage fails: stop, read logs, find root cause, fix code, re-run.
+
+---
+
+## Architecture
+
+### Three Tiers
+- **Tier 1** (Discovery): No API key. Scrapes job boards.
+- **Tier 2** (AI Processing): Gemini/OpenAI API. Score, tailor, cover letters.
+- **Tier 3** (Auto-Apply): Claude Code CLI as subprocess. Fills forms via Playwright.
+
+### Two Credit Systems (IMPORTANT)
+- **Tier 2**: Gemini API (free tier) + OpenAI fallback. Keys in `~/.applypilot/.env`
+- **Tier 3**: Claude Code CLI with Max plan. `ANTHROPIC_API_KEY` must be stripped from subprocess env (launcher.py does this). `--strict-mcp-config` is required to prevent Docker MCP's Playwright from interfering.
+
+### LLM Client (`src/applypilot/llm.py`)
+
+Multi-provider fallback with two-tier model strategy:
+- **Fast** (scoring, HN extraction): `gemini-2.5-flash → gemini-2-flash → gpt-4.1-nano → gpt-4.1-mini → claude-haiku`
+- **Quality** (tailoring, cover letters): `gemini-2.5-pro → gemini-2.5-flash → gpt-4.1-mini → claude-sonnet → claude-haiku`
+
+On 429: marks model exhausted for 5 min, falls to next in chain.
+
+### HITL Flow (`src/applypilot/apply/human_review.py`)
+
+When the apply agent can't proceed (CAPTCHA, login wall):
+1. Agent emits `RESULT:NEEDS_HUMAN:{reason}:{url}` → launcher parks job
+2. In-pipeline HITL: Chrome stays open, CDP badge injected; worker waits for "Done" click
+3. Standalone HITL: `applypilot human-review` → HTTP server at localhost:7373
+
+### Database (`src/applypilot/database.py`)
+
+SQLite with WAL mode. Thread-local connections. `ensure_columns()` auto-adds missing columns.
+
+---
+
+## Dev Setup
+
+```bash
+python3 -m venv .venv
+pip install -e .
+playwright install chromium
+```
+
+API keys go in `~/.applypilot/.env` (never committed).
+
+---
+
+## File Locations
+
+| What | Path |
+|------|------|
+| Source code | `~/Code/ApplyPilot/src/applypilot/` |
+| Venv | `~/Code/ApplyPilot/.venv` |
+| Resume (txt) | `~/.applypilot/resume.txt` |
+| Resume (PDF) | `~/.applypilot/resume.pdf` |
+| API keys | `~/.applypilot/.env` |
+| Profile | `~/.applypilot/profile.json` |
+| Search config | `~/.applypilot/searches.yaml` |
+| Database | `~/.applypilot/applypilot.db` |
+| Tailored resumes | `~/.applypilot/tailored_resumes/` |
+| Cover letters | `~/.applypilot/cover_letters/` |
+| Apply logs | `~/.applypilot/logs/` |
+| Dashboard | `~/.applypilot/dashboard.html` |
+
+---
+
+## Candidate Profile
+
+Fill in your details from `~/.applypilot/profile.json`:
+
+- **Name:** [YOUR NAME] | **Email:** [YOUR_JOB_SEARCH_EMAIL]
+- **Experience:** [N]+ years — [YOUR SKILLS]
+- **Target:** [ROLE LEVEL] [ROLE TYPE] (remote/hybrid/onsite)
+- **Location rules:** In-bounds: [CITY LIST]. Excluded: [CITY LIST].
+
+---
+
+## Key Commands
+
+```bash
+# Tier 2 pipeline (safe, uses Gemini/OpenAI)
+applypilot run discover                        # Find new jobs
+applypilot run enrich                          # Fetch full descriptions
+applypilot run score --limit 100               # AI scoring
+applypilot run tailor --limit 50               # Tailor resumes (score >= 7)
+applypilot run cover                           # Generate cover letters
+applypilot run pdf                             # Generate PDFs
+applypilot run score tailor cover --stream     # Multiple stages concurrently
+applypilot status                              # Pipeline funnel stats
+applypilot dashboard                           # Generate and open HTML dashboard
+
+# Tier 3 apply (uses Claude Code credits)
+applypilot apply                               # Auto-apply (5 workers, continuous)
+applypilot apply --url URL --dry-run           # Test a single job
+applypilot apply --workers 3 --min-score 9     # Tune parallelism and score floor
+applypilot apply --fresh-sessions              # Refresh Chrome cookies first
+applypilot apply --sessions                    # List saved ATS sessions
+applypilot apply --clear-session workday       # Clear an ATS session
+applypilot apply --reset-failed                # Retry all failed jobs
+applypilot apply --reset-category CATEGORY     # Retry jobs in a category
+applypilot apply --mark-applied URL            # Manually mark applied
+applypilot apply --mark-failed URL --fail-reason "reason"
+applypilot human-review                        # HITL server for parked jobs
+
+# Post-apply tracking
+applypilot track                               # Scan Gmail for responses
+
+# Q&A knowledge base
+applypilot qa list
+applypilot qa stats
+applypilot qa export --output qa.yaml
+applypilot qa import qa.yaml
+
+# Credentials
+applypilot creds list
+applypilot creds show DOMAIN
+applypilot creds add DOMAIN
+applypilot creds import-logs
+```
+
+---
+
+## Orchestration Strategy
+
+1. **Throughput** — use `--stream` for concurrent stages
+2. **Quality** — highest scores get tailored first
+3. **Error handling** — if > 30% failure rate, stop and fix before continuing
+4. **Bottleneck focus** — priority is building the apply-ready queue
+
+Error patterns:
+- Gemini 429: automatic fallback, no intervention needed
+- Tailor validation failures > 30%: investigate validator settings
+- Apply credit exhaustion: alert user, cannot auto-fix
+
+---
+
+## Current Pipeline State
+
+Update this section as the pipeline runs:
+
+- **N jobs** discovered
+- **N scored**, N strong matches (7+)
+- **N resumes tailored**
+- **N cover letters** generated
+- **N jobs applied**
+- **N apply errors**
+- **N ready to apply**
+
+### Active TODO
+- [ ] Add your current tasks here
+
+---
+
+## Known Technical Gotchas
+
+1. **Gemini thinking tokens**: 2.5+ models use thinking tokens that consume max_tokens budget.
+2. **Singleton LLM client**: `llm.py` reads env vars at module import. Call `config.load_env()` BEFORE importing.
+3. **Editable install**: `pip install -e .` means source edits take effect immediately.
+4. **Docker MCP Toolkit interference**: If Docker Desktop is installed with MCP Toolkit, use `--strict-mcp-config` in the claude subprocess command.
+5. **Extension loading**: `--load-extension` is blocked in Google Chrome Stable. Status badge is injected via CDP `addInitScript()` instead.
