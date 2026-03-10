@@ -29,6 +29,7 @@ dependencies = [
     "mcp>=1.9",
     "python-jobspy>=1.1",
     "markdownify>=0.14.1",
+    "websocket-client>=1.0",
     ]
 
 [project.optional-dependencies]
