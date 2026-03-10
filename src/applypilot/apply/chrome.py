@@ -97,21 +97,127 @@ def _kill_on_port(port: int) -> None:
 # Worker profile management
 # ---------------------------------------------------------------------------
 
-def setup_worker_profile(worker_id: int) -> Path:
+# ---------------------------------------------------------------------------
+# Whitelist-based profile cloning — only copy what's needed for auth
+# ---------------------------------------------------------------------------
+
+# Top-level files needed (outside Default/)
+_TOP_LEVEL_FILES = ("Local State",)
+
+# Files inside Default/ needed for sessions and auth
+_DEFAULT_FILES = (
+    "Cookies", "Cookies-journal",
+    "Login Data", "Login Data-journal",
+    "Web Data", "Web Data-journal",
+    "Preferences", "Secure Preferences",
+    "Affiliation Database", "Affiliation Database-journal",
+    "Network Action Predictor", "Network Action Predictor-journal",
+)
+
+# Directories inside Default/ needed for auth (some sites store tokens here)
+_DEFAULT_DIRS = (
+    "Local Storage",
+    "Session Storage",
+    "IndexedDB",
+    "Extension State",
+    "Local Extension Settings",
+)
+
+# Session/tab files to NEVER copy (these are huge with many tabs open)
+_NEVER_COPY = {
+    "Current Session", "Current Tabs", "Last Session", "Last Tabs",
+    "Sessions", "SingletonLock", "SingletonSocket", "SingletonCookie",
+}
+
+
+def _copy_auth_files(source: Path, dest: Path) -> int:
+    """Copy only auth-essential files from a Chrome profile.
+
+    Uses a whitelist approach: only copies cookies, login data, local storage,
+    and preferences. Skips session/tab state, history, caches, and everything
+    else that makes profiles huge.
+
+    Returns:
+        Number of files/dirs successfully copied.
+    """
+    copied = 0
+    dest.mkdir(parents=True, exist_ok=True)
+
+    # Top-level files
+    for fname in _TOP_LEVEL_FILES:
+        src = source / fname
+        if src.exists():
+            try:
+                shutil.copy2(str(src), str(dest / fname))
+                copied += 1
+            except (PermissionError, OSError):
+                pass
+
+    # Default/ directory
+    src_default = source / "Default"
+    dst_default = dest / "Default"
+    if not src_default.exists():
+        return copied
+    dst_default.mkdir(parents=True, exist_ok=True)
+
+    # Individual files in Default/
+    for fname in _DEFAULT_FILES:
+        src = src_default / fname
+        if src.exists():
+            try:
+                shutil.copy2(str(src), str(dst_default / fname))
+                copied += 1
+            except (PermissionError, OSError):
+                pass
+
+    # Directories in Default/ (local storage, IndexedDB, etc.)
+    for dname in _DEFAULT_DIRS:
+        src = src_default / dname
+        if src.is_dir():
+            try:
+                shutil.copytree(
+                    str(src), str(dst_default / dname),
+                    dirs_exist_ok=True,
+                )
+                copied += 1
+            except (PermissionError, OSError):
+                pass
+
+    return copied
+
+
+def _refresh_session_files(profile_dir: Path) -> None:
+    """Re-copy auth files from the user's real Chrome profile.
+
+    Updates Cookies, Login Data, Web Data, and Local Storage in the
+    worker's profile so that expired sessions get refreshed without
+    wiping the entire worker profile.
+    """
+    source = config.get_chrome_user_data()
+    count = _copy_auth_files(source, profile_dir)
+    if count:
+        logger.info("Refreshed %d auth files in worker profile", count)
+
+
+def setup_worker_profile(worker_id: int, refresh_cookies: bool = False) -> Path:
     """Create an isolated Chrome profile for a worker.
 
-    On first run, clones from an existing worker profile (preferred, since
-    it already has session cookies) or from the user's real Chrome profile.
-    Subsequent runs reuse the existing worker profile.
+    Uses a whitelist approach: only copies auth-essential files (cookies,
+    login data, preferences, local storage). Skips tab state, history,
+    caches, and extensions — making this fast even with hundreds of tabs.
 
     Args:
         worker_id: Numeric worker identifier.
+        refresh_cookies: If True, re-copy auth files from the source Chrome
+            profile into the existing worker profile.
 
     Returns:
         Path to the worker's Chrome user-data directory.
     """
     profile_dir = config.CHROME_WORKER_DIR / f"worker-{worker_id}"
     if (profile_dir / "Default").exists():
+        if refresh_cookies:
+            _refresh_session_files(profile_dir)
         return profile_dir  # Already initialized
 
     # Find a source: prefer existing worker (has session cookies), else user profile
@@ -126,35 +232,12 @@ def setup_worker_profile(worker_id: int) -> Path:
     if source is None:
         source = config.get_chrome_user_data()
 
-    logger.info("[worker-%d] Copying Chrome profile from %s (first time setup)...",
+    logger.info("[worker-%d] Copying auth files from %s ...",
                 worker_id, source.name)
-    profile_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy essential profile dirs -- skip caches and heavy transient data
-    skip = {
-        "ShaderCache", "GrShaderCache", "Service Worker", "Cache",
-        "Code Cache", "GPUCache", "CacheStorage", "Crashpad",
-        "BrowserMetrics", "SafeBrowsing", "Crowd Deny",
-        "MEIPreload", "SSLErrorAssistant", "recovery", "Temp",
-        "SingletonLock", "SingletonSocket", "SingletonCookie",
-    }
-
-    for item in source.iterdir():
-        if item.name in skip:
-            continue
-        dst = profile_dir / item.name
-        try:
-            if item.is_dir():
-                shutil.copytree(
-                    str(item), str(dst), dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns(
-                        "Cache", "Code Cache", "GPUCache", "Service Worker",
-                    ),
-                )
-            else:
-                shutil.copy2(str(item), str(dst))
-        except (PermissionError, OSError):
-            pass  # skip locked files
+    count = _copy_auth_files(source, profile_dir)
+    logger.info("[worker-%d] Copied %d auth files (skipped tab state, caches, history)",
+                worker_id, count)
 
     return profile_dir
 
@@ -183,17 +266,54 @@ def _suppress_restore_nag(profile_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Anti-detection helpers
+# ---------------------------------------------------------------------------
+
+def _get_real_user_agent() -> str:
+    """Build a realistic Chrome user agent string for macOS.
+
+    Reads the actual Chrome version to stay current. Falls back to a
+    reasonable default if detection fails.
+    """
+    try:
+        chrome_exe = config.get_chrome_path()
+        result = subprocess.run(
+            [chrome_exe, "--version"],
+            capture_output=True, text=True, timeout=5,
+        )
+        # "Google Chrome 145.0.7632.76" -> "145.0.7632.76"
+        version = result.stdout.strip().split()[-1]
+    except Exception:
+        version = "133.0.6943.141"
+
+    system = platform.system()
+    if system == "Darwin":
+        os_part = "Macintosh; Intel Mac OS X 10_15_7"
+    elif system == "Windows":
+        os_part = "Windows NT 10.0; Win64; x64"
+    else:
+        os_part = "X11; Linux x86_64"
+
+    return (
+        f"Mozilla/5.0 ({os_part}) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{version} Safari/537.36"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Chrome launch / kill
 # ---------------------------------------------------------------------------
 
 def launch_chrome(worker_id: int, port: int | None = None,
-                  headless: bool = False) -> subprocess.Popen:
+                  headless: bool = False,
+                  refresh_cookies: bool = False) -> subprocess.Popen:
     """Launch a Chrome instance with remote debugging for a worker.
 
     Args:
         worker_id: Numeric worker identifier.
         port: CDP port. Defaults to BASE_CDP_PORT + worker_id.
         headless: Run Chrome in headless mode (no visible window).
+        refresh_cookies: Re-copy session files from user's Chrome profile.
 
     Returns:
         subprocess.Popen handle for the Chrome process.
@@ -201,7 +321,7 @@ def launch_chrome(worker_id: int, port: int | None = None,
     if port is None:
         port = BASE_CDP_PORT + worker_id
 
-    profile_dir = setup_worker_profile(worker_id)
+    profile_dir = setup_worker_profile(worker_id, refresh_cookies=refresh_cookies)
 
     # Kill any zombie Chrome from a previous run on this port
     _kill_on_port(port)
@@ -227,10 +347,14 @@ def launch_chrome(worker_id: int, port: int | None = None,
         "--disable-save-password-bubble",
         "--disable-popup-blocking",
         # Block dangerous permissions at browser level
-        "--use-fake-device-for-media-stream",
-        "--use-fake-ui-for-media-stream",
         "--deny-permission-prompts",
         "--disable-notifications",
+        # Anti-detection: remove automation signals
+        "--disable-blink-features=AutomationControlled",
+        f"--user-agent={_get_real_user_agent()}",
+        # Suppress "unsupported flag" info bars
+        "--enable-automation=false",
+        "--disable-infobars",
     ]
     if headless:
         cmd.append("--headless=new")

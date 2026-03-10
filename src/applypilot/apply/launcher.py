@@ -60,11 +60,39 @@ if platform.system() != "Windows":
 
 
 # ---------------------------------------------------------------------------
+# Account capture from agent output
+# ---------------------------------------------------------------------------
+
+def _parse_account_created(output: str, job_url: str | None = None) -> None:
+    """Parse ACCOUNT_CREATED lines from agent output and save to DB."""
+    from applypilot.database import store_account
+    for line in output.split("\n"):
+        if "ACCOUNT_CREATED:" not in line:
+            continue
+        try:
+            json_str = line.split("ACCOUNT_CREATED:", 1)[1].strip()
+            account = json.loads(json_str)
+            conn = get_connection()
+            store_account(conn, account, job_url=job_url)
+            logger.info("Saved new account: %s @ %s",
+                        account.get("email"), account.get("domain"))
+        except (json.JSONDecodeError, IndexError, Exception) as e:
+            logger.warning("Failed to parse ACCOUNT_CREATED line: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # MCP config
 # ---------------------------------------------------------------------------
 
 def _make_mcp_config(cdp_port: int) -> dict:
-    """Build MCP config dict for a specific CDP port."""
+    """Build MCP config dict for a specific CDP port.
+
+    Passes the real Chrome user-agent to Playwright MCP so it doesn't
+    override our Chrome --user-agent flag with its default
+    "HeadlessChrome" UA when connecting via CDP.
+    """
+    from applypilot.apply.chrome import _get_real_user_agent
+
     return {
         "mcpServers": {
             "playwright": {
@@ -73,6 +101,7 @@ def _make_mcp_config(cdp_port: int) -> dict:
                     "@playwright/mcp@latest",
                     f"--cdp-endpoint=http://localhost:{cdp_port}",
                     f"--viewport-size={config.DEFAULTS['viewport']}",
+                    f"--user-agent={_get_real_user_agent()}",
                 ],
             },
             "gmail": {
@@ -103,6 +132,14 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
     try:
         conn.execute("BEGIN IMMEDIATE")
 
+        # Release stale in_progress locks from crashed runs (>30 min old)
+        conn.execute("""
+            UPDATE jobs SET apply_status = NULL, agent_id = NULL
+            WHERE apply_status = 'in_progress'
+              AND last_attempted_at IS NOT NULL
+              AND last_attempted_at < datetime('now', '-30 minutes')
+        """)
+
         if target_url:
             like = f"%{target_url.split('?')[0].rstrip('/')}%"
             row = conn.execute("""
@@ -118,17 +155,28 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
             blocked_sites, blocked_patterns = _load_blocked()
             site_filter = " AND ".join(f"site != '{s}'" for s in blocked_sites) if blocked_sites else "1=1"
             url_filter = " AND ".join(f"url NOT LIKE '{p}'" for p in blocked_patterns) if blocked_patterns else "1=1"
+            # Company-aware round-robin: prioritize distinct companies before
+            # applying to multiple jobs at the same company. Within the same
+            # company rank, pick highest score first.
             row = conn.execute(f"""
                 SELECT url, title, site, application_url, tailored_resume_path,
-                       fit_score, location, full_description, cover_letter_path
-                FROM jobs
-                WHERE tailored_resume_path IS NOT NULL
-                  AND (apply_status IS NULL OR apply_status = 'failed')
-                  AND (apply_attempts IS NULL OR apply_attempts < {config.DEFAULTS["max_apply_attempts"]})
-                  AND fit_score >= ?
-                  AND {site_filter}
-                  AND {url_filter}
-                ORDER BY fit_score DESC, url
+                       fit_score, location, full_description, cover_letter_path,
+                       company
+                FROM (
+                    SELECT *,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY COALESCE(company, url)
+                               ORDER BY fit_score DESC
+                           ) as company_rank
+                    FROM jobs
+                    WHERE tailored_resume_path IS NOT NULL
+                      AND (apply_status IS NULL OR apply_status = 'failed')
+                      AND (apply_attempts IS NULL OR apply_attempts < {config.DEFAULTS["max_apply_attempts"]})
+                      AND fit_score >= ?
+                      AND {site_filter}
+                      AND {url_filter}
+                )
+                ORDER BY company_rank ASC, fit_score DESC, url
                 LIMIT 1
             """, (min_score,)).fetchone()
 
@@ -285,6 +333,121 @@ def reset_failed() -> int:
 # Per-job execution
 # ---------------------------------------------------------------------------
 
+def _infer_result_from_output(output: str) -> str | None:
+    """Infer a result from agent output when no RESULT line was emitted.
+
+    Scans for common phrases that indicate success or a specific failure mode.
+    Returns 'applied' for detected successful submissions, a failure reason
+    string for failures, or None if nothing can be inferred.
+    """
+    lower = output.lower()
+
+    # Check for successful application first — agent submitted but forgot RESULT:APPLIED
+    success_phrases = [
+        "application submitted successfully",
+        "application was sent to",
+        "application has been received",
+        "successfully submitted",
+        "thank you for applying",
+        "your application was sent",
+        "application sent",
+        "application received",
+        "application submitted",
+    ]
+    # Strong indicators alone are enough
+    strong_success = [
+        "application submitted successfully",
+        "your application was sent to",
+        "thank you for applying",
+        "successfully submitted",
+    ]
+    for phrase in strong_success:
+        if phrase in lower:
+            return "applied"
+    # Weaker indicators need 2+ matches
+    success_count = sum(1 for p in success_phrases if p in lower)
+    if success_count >= 2:
+        return "applied"
+
+    # Order matters — check most specific patterns first
+    patterns: list[tuple[str, list[str]]] = [
+        ("login_issue", [
+            "password reset requires email",
+            "cannot log in",
+            "login failed permanently",
+            "cannot access external email",
+            "session has now expired",
+            "credentials between session",
+        ]),
+        ("account_required", [
+            "account was successfully created",
+            "password from the original account",
+            "password was not stored",
+        ]),
+        ("captcha", [
+            "blocked by captcha",
+            "captcha cannot be solved",
+            "unsolvable captcha",
+        ]),
+        ("expired", [
+            "no longer accepting",
+            "job has been closed",
+            "position has been filled",
+            "listing is closed",
+            "listing has expired",
+        ]),
+        ("not_eligible_location", [
+            "not eligible for this location",
+            "onsite only",
+            "outside your area",
+            "cannot relocate",
+        ]),
+        ("stuck", [
+            "cannot be completed through browser automation",
+            "must be completed manually",
+            "sandbox environment",
+            "sandboxed environment",
+            "non-sandboxed environment",
+            "technical blocker",
+            "cannot satisfy",
+        ]),
+    ]
+    for reason, phrases in patterns:
+        for phrase in phrases:
+            if phrase in lower:
+                return reason
+    return None
+
+
+def _reset_browser_tabs(port: int) -> None:
+    """Close all existing tabs and open a fresh about:blank tab via CDP.
+
+    Prevents leftover tabs from a previous job confusing the next agent.
+    """
+    import urllib.request
+    try:
+        data = urllib.request.urlopen(f"http://localhost:{port}/json", timeout=3).read()
+        tabs = json.loads(data)
+        pages = [t for t in tabs if t.get("type") == "page"]
+        if not pages:
+            return
+        # Open a fresh blank tab first (CDP requires PUT for /json/new)
+        req = urllib.request.Request(
+            f"http://localhost:{port}/json/new?about:blank", method="PUT"
+        )
+        urllib.request.urlopen(req, timeout=3)
+        # Close all old tabs
+        for tab in pages:
+            try:
+                urllib.request.urlopen(
+                    f"http://localhost:{port}/json/close/{tab['id']}", timeout=2
+                )
+            except Exception:
+                pass
+    except Exception:
+        pass  # Chrome not ready yet or CDP unavailable — agent will navigate anyway
+
+
 def run_job(job: dict, port: int, worker_id: int = 0,
             model: str = "sonnet", dry_run: bool = False) -> tuple[str, int]:
     """Spawn a Claude Code session for one job application.
@@ -294,6 +457,9 @@ def run_job(job: dict, port: int, worker_id: int = 0,
         'applied', 'expired', 'captcha', 'login_issue',
         'failed:reason', or 'skipped'.
     """
+    # Close leftover tabs from previous job so agent starts on a blank page
+    _reset_browser_tabs(port)
+
     # Read tailored resume text
     resume_path = job.get("tailored_resume_path")
     txt_path = Path(resume_path).with_suffix(".txt") if resume_path else None
@@ -318,18 +484,20 @@ def run_job(job: dict, port: int, worker_id: int = 0,
         "--model", model,
         "-p",
         "--mcp-config", str(mcp_config_path),
+        "--strict-mcp-config",
         "--permission-mode", "bypassPermissions",
         "--no-session-persistence",
-        "--disallowedTools", (
-            "mcp__gmail__draft_email,mcp__gmail__modify_email,"
-            "mcp__gmail__delete_email,mcp__gmail__download_attachment,"
-            "mcp__gmail__batch_modify_emails,mcp__gmail__batch_delete_emails,"
-            "mcp__gmail__create_label,mcp__gmail__update_label,"
-            "mcp__gmail__delete_label,mcp__gmail__get_or_create_label,"
-            "mcp__gmail__list_email_labels,mcp__gmail__create_filter,"
-            "mcp__gmail__list_filters,mcp__gmail__get_filter,"
-            "mcp__gmail__delete_filter"
-        ),
+        "--disallowedTools", ",".join([
+            # Block Gmail write tools (read-only access for email verification)
+            "mcp__gmail__draft_email", "mcp__gmail__modify_email",
+            "mcp__gmail__delete_email", "mcp__gmail__download_attachment",
+            "mcp__gmail__batch_modify_emails", "mcp__gmail__batch_delete_emails",
+            "mcp__gmail__create_label", "mcp__gmail__update_label",
+            "mcp__gmail__delete_label", "mcp__gmail__get_or_create_label",
+            "mcp__gmail__list_email_labels", "mcp__gmail__create_filter",
+            "mcp__gmail__list_filters", "mcp__gmail__get_filter",
+            "mcp__gmail__delete_filter",
+        ]),
         "--output-format", "stream-json",
         "--verbose", "-",
     ]
@@ -337,6 +505,12 @@ def run_job(job: dict, port: int, worker_id: int = 0,
     env = os.environ.copy()
     env.pop("CLAUDECODE", None)
     env.pop("CLAUDE_CODE_ENTRYPOINT", None)
+    # Remove ANTHROPIC_API_KEY so the subprocess uses the user's Max plan
+    # login instead of API billing. The key is loaded by config.load_env()
+    # for the Gemini/OpenAI LLM fallback chain but must NOT leak into the
+    # Claude Code subprocess — it would override interactive auth and hit
+    # "credit balance is too low" on an unfunded API account.
+    env.pop("ANTHROPIC_API_KEY", None)
 
     worker_dir = reset_worker_dir(worker_id)
 
@@ -453,15 +627,29 @@ def run_job(job: dict, port: int, worker_id: int = 0,
             prev_cost = ws.total_cost if ws else 0.0
             update_state(worker_id, total_cost=prev_cost + cost)
 
+        # Detect Claude Code credit exhaustion — stop the entire worker
+        if "credit balance is too low" in output.lower() or "insufficient credits" in output.lower():
+            add_event(f"[W{worker_id}] CREDIT EXHAUSTED — Claude Code credits depleted")
+            update_state(worker_id, status="credits_exhausted",
+                         last_action="NO CREDITS")
+            logger.error("Claude Code credits exhausted. Cannot auto-apply. "
+                         "Top up at https://console.anthropic.com/settings/billing")
+            return "failed:credits_exhausted", duration_ms
+
+        # Parse ACCOUNT_CREATED lines and save to DB
+        _parse_account_created(output, job.get("url"))
+
         def _clean_reason(s: str) -> str:
             return re.sub(r'[*`"]+$', '', s).strip()
 
-        for result_status in ["APPLIED", "EXPIRED", "CAPTCHA", "LOGIN_ISSUE"]:
+        for result_status in ["APPLIED", "SUCCESS", "EXPIRED", "CAPTCHA", "LOGIN_ISSUE"]:
             if f"RESULT:{result_status}" in output:
-                add_event(f"[W{worker_id}] {result_status} ({elapsed}s): {job['title'][:30]}")
-                update_state(worker_id, status=result_status.lower(),
-                             last_action=f"{result_status} ({elapsed}s)")
-                return result_status.lower(), duration_ms
+                # Normalize SUCCESS -> applied
+                canonical = "applied" if result_status == "SUCCESS" else result_status.lower()
+                add_event(f"[W{worker_id}] {canonical.upper()} ({elapsed}s): {job['title'][:30]}")
+                update_state(worker_id, status=canonical,
+                             last_action=f"{canonical.upper()} ({elapsed}s)")
+                return canonical, duration_ms
 
         if "RESULT:FAILED" in output:
             for out_line in output.split("\n"):
@@ -483,6 +671,19 @@ def run_job(job: dict, port: int, worker_id: int = 0,
                                  last_action=f"FAILED: {reason[:25]}")
                     return f"failed:{reason}", duration_ms
             return "failed:unknown", duration_ms
+
+        # No explicit RESULT line. Try to infer the outcome from agent output.
+        inferred = _infer_result_from_output(output)
+        if inferred == "applied":
+            add_event(f"[W{worker_id}] INFERRED APPLIED ({elapsed}s): {job['title'][:30]}")
+            update_state(worker_id, status="applied",
+                         last_action=f"APPLIED (inferred, {elapsed}s)")
+            return "applied", duration_ms
+        if inferred:
+            add_event(f"[W{worker_id}] INFERRED {inferred.upper()} ({elapsed}s): {job['title'][:30]}")
+            update_state(worker_id, status="failed",
+                         last_action=f"inferred:{inferred[:25]}")
+            return f"failed:{inferred}", duration_ms
 
         add_event(f"[W{worker_id}] NO RESULT ({elapsed}s)")
         update_state(worker_id, status="failed", last_action=f"no result ({elapsed}s)")
@@ -507,17 +708,115 @@ def run_job(job: dict, port: int, worker_id: int = 0,
 
 
 # ---------------------------------------------------------------------------
+# Failed attempts log — human-readable log with next steps
+# ---------------------------------------------------------------------------
+
+_NEXT_STEPS: dict[str, str] = {
+    "login_required": "Log in manually in the Chrome worker window, then re-run. The session will persist.",
+    "login_issue": "Login failed permanently. Check if the site requires SSO or a different account. May need to apply manually.",
+    "sso_required": "Site requires Google/Microsoft/SSO login. Apply manually via browser.",
+    "captcha": "Blocked by unsolvable CAPTCHA. Try again later or apply manually.",
+    "expired": "Job listing is closed/expired. No action needed — remove from queue.",
+    "not_eligible_location": "Job is onsite-only outside your area. No action needed.",
+    "not_eligible_salary": "Salary below floor. No action needed.",
+    "not_a_job_application": "Site is a profile builder / talent marketplace, not a job application. No action needed.",
+    "unsafe_permissions": "Site requested camera/mic/screen permissions. Apply manually if interested.",
+    "unsafe_verification": "Site requires video/biometric verification. Apply manually if interested.",
+    "already_applied": "Already applied to this job. No action needed.",
+    "stuck": "Agent got stuck on the page after 3 attempts. Check the worker log for details, then try manually.",
+    "page_error": "Page was broken (500 error, blank page). Try again later.",
+    "timeout": "Agent timed out. Job may be complex (multi-page form). Try with longer timeout or apply manually.",
+    "no_result_line": "Agent finished but didn't output a result code. Check worker log for what happened.",
+}
+
+_FAILED_LOG = config.LOG_DIR / "failed_actions.log"
+_MANUAL_LOG = config.APP_DIR / "manual_actions.md"
+
+
+def _log_failed_attempt(job: dict, reason: str, worker_id: int,
+                        duration_ms: int, permanent: bool) -> None:
+    """Append a structured entry to the failed actions log.
+
+    Each entry includes the job, failure reason, whether it's retryable,
+    and a human-readable next step so the user knows what to do.
+    """
+    config.ensure_dirs()
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    url = job.get("application_url") or job["url"]
+    title = job.get("title", "Unknown")
+    company = job.get("site", "Unknown")
+    score = job.get("fit_score", "?")
+    duration_s = duration_ms / 1000 if duration_ms else 0
+
+    # Look up the next step for this failure reason
+    next_step = _NEXT_STEPS.get(reason, "Check the worker log for details. May need to apply manually.")
+
+    retryable = "NO (permanent)" if permanent else "YES (will retry automatically)"
+
+    entry = (
+        f"\n{'─' * 70}\n"
+        f"[{ts}]  {title} @ {company}  (score: {score}/10)\n"
+        f"URL:      {url}\n"
+        f"Reason:   {reason}\n"
+        f"Duration: {duration_s:.0f}s  |  Worker: {worker_id}  |  Retryable: {retryable}\n"
+        f"Action:   {next_step}\n"
+    )
+
+    try:
+        with open(_FAILED_LOG, "a", encoding="utf-8") as f:
+            f.write(entry)
+    except OSError:
+        logger.debug("Could not write to failed actions log", exc_info=True)
+
+
+def _log_manual_action(job: dict, reason: str, instructions: str) -> None:
+    """Append a human-action-required entry to ~/.applypilot/manual_actions.md."""
+    config.ensure_dirs()
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    url = job.get("application_url") or job["url"]
+    title = job.get("title", "Unknown")
+    company = job.get("site", "Unknown")
+    score = job.get("fit_score", "?")
+
+    entry = (
+        f"\n## {title} @ {company}\n"
+        f"- **When**: {ts}\n"
+        f"- **Score**: {score}/10\n"
+        f"- **URL**: {url}\n"
+        f"- **Reason**: {reason}\n"
+        f"- **Action needed**: {instructions}\n"
+        f"- **Retry**: `applypilot apply --url '{url}'`\n"
+    )
+
+    try:
+        with open(_MANUAL_LOG, "a", encoding="utf-8") as f:
+            if f.tell() == 0:
+                f.write("# Manual Actions Required\n\nJobs that need human intervention before retrying.\n")
+            f.write(entry)
+    except OSError:
+        logger.debug("Could not write to manual actions log", exc_info=True)
+
+
+# ---------------------------------------------------------------------------
 # Permanent failure classification
 # ---------------------------------------------------------------------------
 
 PERMANENT_FAILURES: set[str] = {
-    "expired", "captcha", "login_issue",
+    "expired", "captcha", "login_issue", "email_verification",
+    "form_interaction_error",
     "not_eligible_location", "not_eligible_salary",
     "already_applied", "account_required",
     "not_a_job_application", "unsafe_permissions",
-    "unsafe_verification", "sso_required",
+    "unsafe_verification", "sso_required", "contract_only",
     "site_blocked", "cloudflare_blocked", "blocked_by_cloudflare",
+    "credits_exhausted", "stuck",
+    "file_upload_blocked", "resume_upload_blocked",
+    "account_creation_broken", "page_error",
+    "application_limit_exceeded",
 }
+
+# login_required is retryable — user logs in manually, then retry succeeds
+RETRYABLE_AUTH_FAILURES: set[str] = {"login_required"}
 
 PERMANENT_PREFIXES: tuple[str, ...] = ("site_blocked", "cloudflare", "blocked_by")
 
@@ -525,6 +824,9 @@ PERMANENT_PREFIXES: tuple[str, ...] = ("site_blocked", "cloudflare", "blocked_by
 def _is_permanent_failure(result: str) -> bool:
     """Determine if a failure should never be retried."""
     reason = result.split(":", 1)[-1] if ":" in result else result
+    # login_required is explicitly retryable
+    if result in RETRYABLE_AUTH_FAILURES or reason in RETRYABLE_AUTH_FAILURES:
+        return False
     return (
         result in PERMANENT_FAILURES
         or reason in PERMANENT_FAILURES
@@ -539,7 +841,8 @@ def _is_permanent_failure(result: str) -> bool:
 def worker_loop(worker_id: int = 0, limit: int = 1,
                 target_url: str | None = None,
                 min_score: int = 7, headless: bool = False,
-                model: str = "sonnet", dry_run: bool = False) -> tuple[int, int]:
+                model: str = "sonnet", dry_run: bool = False,
+                fresh_sessions: bool = False) -> tuple[int, int]:
     """Run jobs sequentially until limit is reached or queue is empty.
 
     Args:
@@ -550,6 +853,7 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
         headless: Run Chrome headless.
         model: Claude model name.
         dry_run: Don't click Submit.
+        fresh_sessions: Refresh Chrome session cookies before launching.
 
     Returns:
         Tuple of (applied_count, failed_count).
@@ -590,7 +894,8 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
         chrome_proc = None
         try:
             add_event(f"[W{worker_id}] Launching Chrome...")
-            chrome_proc = launch_chrome(worker_id, port=port, headless=headless)
+            chrome_proc = launch_chrome(worker_id, port=port, headless=headless,
+                                        refresh_cookies=fresh_sessions)
 
             result, duration_ms = run_job(job, port=port, worker_id=worker_id,
                                             model=model, dry_run=dry_run)
@@ -599,6 +904,15 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
                 release_lock(job["url"])
                 add_event(f"[W{worker_id}] Skipped: {job['title'][:30]}")
                 continue
+            elif "credits_exhausted" in result:
+                # No point continuing — all workers should stop
+                reason = result.split(":", 1)[-1] if ":" in result else result
+                mark_result(job["url"], "failed", reason, permanent=True,
+                            duration_ms=duration_ms)
+                _log_failed_attempt(job, reason, worker_id, duration_ms, True)
+                failed += 1
+                _stop_event.set()  # Signal all workers to stop
+                break
             elif result == "applied":
                 mark_result(job["url"], "applied", duration_ms=duration_ms)
                 applied += 1
@@ -606,9 +920,36 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
                              jobs_done=applied + failed)
             else:
                 reason = result.split(":", 1)[-1] if ":" in result else result
+                # login_required: prominent message + bell, stays retryable
+                if reason == "login_required":
+                    login_msg = (
+                        f"[W{worker_id}] LOGIN NEEDED: {job.get('application_url') or job['url']} "
+                        f"— log in manually in Chrome worker {worker_id}, then retry"
+                    )
+                    add_event(login_msg)
+                    logger.warning(
+                        "[W%d] LOGIN NEEDED: %s — log in manually in Chrome worker %d, then retry",
+                        worker_id, job.get("application_url") or job["url"], worker_id,
+                    )
+                    # Print to stderr so it's visible even under Rich Live display
+                    import sys
+                    print(
+                        f"\n\033[1;33m⚠ LOGIN REQUIRED ⚠\033[0m\n"
+                        f"  Job:    {job['title']}\n"
+                        f"  URL:    {job.get('application_url') or job['url']}\n"
+                        f"  Worker: {worker_id}\n"
+                        f"  → Log in manually in Chrome worker {worker_id}, then re-run.\n"
+                        f"\a",  # terminal bell
+                        file=sys.stderr, flush=True,
+                    )
+                    _log_manual_action(
+                        job, "login_required",
+                        "Log in to this site manually, then retry the command below.",
+                    )
+                perm = _is_permanent_failure(result)
                 mark_result(job["url"], "failed", reason,
-                            permanent=_is_permanent_failure(result),
-                            duration_ms=duration_ms)
+                            permanent=perm, duration_ms=duration_ms)
+                _log_failed_attempt(job, reason, worker_id, duration_ms, perm)
                 failed += 1
                 update_state(worker_id, jobs_failed=failed,
                              jobs_done=applied + failed)
@@ -622,6 +963,7 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
         except Exception as e:
             logger.exception("Worker %d launcher error", worker_id)
             add_event(f"[W{worker_id}] Launcher error: {str(e)[:40]}")
+            _log_failed_attempt(job, f"launcher_error:{str(e)[:80]}", worker_id, 0, False)
             release_lock(job["url"])
             failed += 1
             update_state(worker_id, jobs_failed=failed)
@@ -644,7 +986,8 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
 def main(limit: int = 1, target_url: str | None = None,
          min_score: int = 7, headless: bool = False, model: str = "sonnet",
          dry_run: bool = False, continuous: bool = False,
-         poll_interval: int = 60, workers: int = 1) -> None:
+         poll_interval: int = 60, workers: int = 1,
+         fresh_sessions: bool = False) -> None:
     """Launch the apply pipeline.
 
     Args:
@@ -657,6 +1000,7 @@ def main(limit: int = 1, target_url: str | None = None,
         continuous: Run forever, polling for new jobs.
         poll_interval: Seconds between DB polls when queue is empty.
         workers: Number of parallel workers (default 1).
+        fresh_sessions: Refresh Chrome session cookies from user's real profile.
     """
     global POLL_INTERVAL
     POLL_INTERVAL = poll_interval
@@ -728,6 +1072,7 @@ def main(limit: int = 1, target_url: str | None = None,
                     headless=headless,
                     model=model,
                     dry_run=dry_run,
+                    fresh_sessions=fresh_sessions,
                 )
             else:
                 # Multi-worker — distribute limit across workers
@@ -751,6 +1096,7 @@ def main(limit: int = 1, target_url: str | None = None,
                             headless=headless,
                             model=model,
                             dry_run=dry_run,
+                            fresh_sessions=fresh_sessions,
                         ): i
                         for i in range(workers)
                     }

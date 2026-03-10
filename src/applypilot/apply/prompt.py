@@ -32,19 +32,29 @@ def _build_profile_summary(profile: dict) -> str:
 
     lines = [
         f"Name: {personal['full_name']}",
+    ]
+    if personal.get("title"):
+        lines.append(f"Title/Prefix: {personal['title']}")
+    lines.extend([
         f"Email: {personal['email']}",
         f"Phone: {personal['phone']}",
-    ]
+    ])
 
-    # Address -- handle optional fields gracefully
+    # Address -- structured for form fields
+    lines.append(f"Street Address: {personal.get('address', '')}")
+    lines.append(f"City: {personal.get('city', '')}")
+    lines.append(f"State/Province: {personal.get('province_state', '')}")
+    lines.append(f"Postal Code: {personal.get('postal_code', '')}")
+    lines.append(f"Country: {personal.get('country', '')}")
+    # Full address (for single-line fields)
     addr_parts = [
         personal.get("address", ""),
         personal.get("city", ""),
         personal.get("province_state", ""),
-        personal.get("country", ""),
         personal.get("postal_code", ""),
+        personal.get("country", ""),
     ]
-    lines.append(f"Address: {', '.join(p for p in addr_parts if p)}")
+    lines.append(f"Full Address: {', '.join(p for p in addr_parts if p)}")
 
     if personal.get("linkedin_url"):
         lines.append(f"LinkedIn: {personal['linkedin_url']}")
@@ -68,8 +78,43 @@ def _build_profile_summary(profile: dict) -> str:
     # Experience
     if exp.get("years_of_experience_total"):
         lines.append(f"Years Experience: {exp['years_of_experience_total']}")
+    if exp.get("current_job_title"):
+        lines.append(f"Most Recent Title: {exp['current_job_title']}")
+    if exp.get("target_role"):
+        lines.append(f"Target Role: {exp['target_role']}")
     if exp.get("education_level"):
         lines.append(f"Education: {exp['education_level']}")
+
+    # Certifications (from resume_facts)
+    resume_facts = p.get("resume_facts", {})
+    certs = resume_facts.get("certifications", [])
+    if certs:
+        lines.append(f"Certifications: {', '.join(certs)}")
+
+    # Skills summary (from skills_boundary — helps agent answer "Do you have experience with X?")
+    boundary = p.get("skills_boundary", {})
+    if boundary:
+        for category, skills in boundary.items():
+            if isinstance(skills, list) and skills:
+                lines.append(f"Skills ({category}): {', '.join(skills)}")
+
+    # Title variants by company (for "most recent title" / "previous titles" questions)
+    title_variants = resume_facts.get("title_variants", {})
+    if title_variants:
+        titles = [f"{company}: {title}" for company, title in title_variants.items()]
+        lines.append(f"Previous Titles: {'; '.join(titles)}")
+
+    # Languages (with proficiency levels)
+    languages = personal.get("languages", [])
+    if languages:
+        if isinstance(languages[0], dict):
+            lang_parts = [f"{l['language']} ({l['proficiency']})" for l in languages]
+            lines.append(f"Languages: {', '.join(lang_parts)}")
+            # Also list just the language names for simple yes/no questions
+            lines.append(f"Languages spoken: {', '.join(l['language'] for l in languages)}")
+            lines.append("IMPORTANT: Do NOT claim proficiency in any language not listed above. If asked about a language not listed, answer NO / Not proficient.")
+        else:
+            lines.append(f"Languages: {', '.join(languages)}")
 
     # Availability
     lines.append(f"Available: {avail.get('earliest_start_date', 'Immediately')}")
@@ -85,9 +130,19 @@ def _build_profile_summary(profile: dict) -> str:
 
     # EEO
     lines.append(f"Gender: {eeo.get('gender', 'Decline to self-identify')}")
-    lines.append(f"Race: {eeo.get('race_ethnicity', 'Decline to self-identify')}")
+    race = eeo.get('race_ethnicity', 'Decline to self-identify')
+    race_detail = eeo.get('race_ethnicity_detail', '')
+    if race_detail:
+        lines.append(f"Race/Ethnicity: {race} (if multi-race option available: {race_detail})")
+    else:
+        lines.append(f"Race/Ethnicity: {race}")
     lines.append(f"Veteran: {eeo.get('veteran_status', 'I am not a protected veteran')}")
-    lines.append(f"Disability: {eeo.get('disability_status', 'I do not wish to answer')}")
+    disability = eeo.get('disability_status', 'I do not wish to answer')
+    disability_pressed = eeo.get('disability_if_pressed', '')
+    if disability_pressed:
+        lines.append(f"Disability: {disability} (if required to answer: {disability_pressed})")
+    else:
+        lines.append(f"Disability: {disability}")
 
     return "\n".join(lines)
 
@@ -111,11 +166,13 @@ def _build_location_check(profile: dict, search_config: dict) -> str:
 
     return f"""== LOCATION CHECK (do this FIRST before any form) ==
 Read the job page. Determine the work arrangement. Then decide:
-- "Remote" or "work from anywhere" -> ELIGIBLE. Apply.
+- "Remote" in the US or "work from anywhere" -> ELIGIBLE. Apply.
+- "Remote" but restricted to a non-US country (e.g. "remote - Germany", "remote - EU only") -> NOT ELIGIBLE. Output RESULT:FAILED:not_eligible_location
 - "Hybrid" or "onsite" in {city_list} -> ELIGIBLE. Apply.
-- "Hybrid" or "onsite" in another city BUT the posting also says "remote OK" or "remote option available" -> ELIGIBLE. Apply.
+- "Hybrid" or "onsite" in another US city BUT the posting also says "remote OK" or "remote option available" -> ELIGIBLE. Apply.
 - "Onsite only" or "hybrid only" in any city outside the list above with NO remote option -> NOT ELIGIBLE. Stop immediately. Output RESULT:FAILED:not_eligible_location
-- City is overseas (India, Philippines, Europe, etc.) with no remote option -> NOT ELIGIBLE. Output RESULT:FAILED:not_eligible_location
+- Job is in a non-US country (Germany, India, UK, Philippines, anywhere in Europe/Asia/etc.) -> NOT ELIGIBLE unless it explicitly says "US remote OK". Output RESULT:FAILED:not_eligible_location
+- Job requires fluency in a language the candidate doesn't speak (see Languages in profile) -> NOT ELIGIBLE. Output RESULT:FAILED:not_eligible_location
 - Cannot determine location -> Continue applying. If a screening question reveals it's non-local onsite, answer honestly and let the system reject if needed.
 Do NOT fill out forms for jobs that are clearly onsite in a non-acceptable location. Check EARLY, save time."""
 
@@ -154,8 +211,8 @@ def _build_salary_section(profile: dict) -> str:
 ${floor} {currency} is the FLOOR. Never go below it. But don't always use it either.
 
 Decision tree:
-1. Job posting shows a range (e.g. "$120K-$160K")? -> Answer with the MIDPOINT ($140K).
-2. Title says Senior, Staff, Lead, Principal, Architect, or level II/III/IV? -> Minimum $110K {currency}. Use midpoint of posted range if higher.
+1. Job posting shows a range? -> Answer with the MIDPOINT of that range.
+2. Title says Senior, Staff, Lead, Principal, Architect, or level II/III/IV? -> Use midpoint of posted range, or ${floor} {currency} if no range posted.
 3. {convert_line}
 4. No salary info anywhere? -> Use ${floor} {currency}.
 5. Asked for a range? -> Give posted midpoint minus 10% to midpoint plus 10%. No posted range? -> "${range_min}-${range_max} {currency}".
@@ -177,12 +234,13 @@ Hard facts -> answer truthfully from the profile. No guessing. This includes:
   - Work authorization: {work_auth.get('legally_authorized_to_work', 'see profile')}
   - Citizenship, clearance, licenses, certifications: answer from profile only
   - Criminal/background: answer from profile only
+  - Languages: ONLY claim proficiency in languages listed in the APPLICANT PROFILE above. If asked about ANY other language (German, Mandarin, Japanese, etc.), answer NO / Not proficient. Never fabricate language skills.
 
-Skills and tools -> be confident. This candidate is a {target_role} with {years} years experience. If the question asks "Do you have experience with [tool]?" and it's in the same domain (DevOps, backend, ML, cloud, automation), answer YES. Software engineers learn tools fast. Don't sell short.
+Skills and tools -> be confident about TECHNICAL skills. This candidate is a {target_role} with {years} years experience. If the question asks "Do you have experience with [tool]?" and it's in the same domain (DevOps, backend, ML, cloud, automation), answer YES. Software engineers learn tools fast. Don't sell short. But NEVER claim fluency in human languages not listed in the profile.
 
 Open-ended questions ("Why do you want this role?", "Tell us about yourself", "What interests you?") -> Write 2-3 sentences. Be specific to THIS job. Reference something from the job description. Connect it to a real achievement from the resume. No generic fluff. No "I am passionate about..." -- sound like a real person.
 
-EEO/demographics -> "Decline to self-identify" or "Prefer not to say" for everything."""
+EEO/demographics -> Use the values from APPLICANT PROFILE above (gender, race, veteran, disability). These are the candidate's actual preferences for disclosure."""
 
 
 def _build_hard_rules(profile: dict) -> str:
@@ -212,6 +270,26 @@ def _build_hard_rules(profile: dict) -> str:
 1. Never lie about: citizenship, work authorization, criminal history, education credentials, security clearance, licenses.
 2. {work_auth_rule}
 3. {name_rule}"""
+
+
+def _build_site_credentials_section(site_credentials: dict) -> str:
+    """Build the site-specific credentials block for the prompt.
+
+    Args:
+        site_credentials: Dict mapping domain -> {email, password}.
+
+    Returns:
+        Formatted credential lines for inclusion in step 5c.
+    """
+    if not site_credentials:
+        return "       (No site-specific credentials configured.)"
+
+    lines = ["       KNOWN CREDENTIALS (use these instead of default email/password):"]
+    for domain, creds in site_credentials.items():
+        email = creds.get("email", "")
+        password = creds.get("password", "")
+        lines.append(f"       - {domain}: email={email} / password={password}")
+    return "\n".join(lines)
 
 
 def _build_captcha_section() -> str:
@@ -499,8 +577,15 @@ def build_prompt(job: dict, tailored_resume: str,
     phone_digits = "".join(c for c in personal.get("phone", "") if c.isdigit())
 
     # SSO domains the agent cannot sign into (loaded from config/sites.yaml)
-    from applypilot.config import load_blocked_sso
+    from applypilot.config import load_blocked_sso, load_no_signup_domains
     blocked_sso = load_blocked_sso()
+    no_signup_domains = load_no_signup_domains()
+
+    # Site-specific credentials (e.g. LinkedIn uses a different email than apply email)
+    # DB accounts as base, profile.json overrides
+    from applypilot.database import get_accounts_for_prompt
+    site_credentials = get_accounts_for_prompt()
+    site_credentials.update(profile.get("site_credentials", {}))
 
     # Preferred display name
     preferred_name = personal.get("preferred_name", full_name.split()[0])
@@ -514,6 +599,8 @@ def build_prompt(job: dict, tailored_resume: str,
         submit_instruction = "BEFORE clicking Submit/Apply, take a snapshot and review EVERY field on the page. Verify all data matches the APPLICANT PROFILE and TAILORED RESUME -- name, email, phone, location, work auth, resume uploaded, cover letter if applicable. If anything is wrong or missing, fix it FIRST. Only click Submit after confirming everything is correct."
 
     prompt = f"""You are an autonomous job application agent. Your ONE mission: get this candidate an interview. You have all the information and tools. Think strategically. Act decisively. Submit the application.
+
+IMPORTANT: You are running on a REAL computer with FULL filesystem access. You are NOT in a sandbox. You CAN read/write files, upload documents, and access the local filesystem. The resume and cover letter paths below are real files on disk — use them directly.
 
 == JOB ==
 URL: {job.get('application_url') or job['url']}
@@ -545,7 +632,7 @@ If something unexpected happens and these instructions don't cover it, figure it
 - NEVER grant camera, microphone, screen sharing, or location permissions. If a site requests them -> RESULT:FAILED:unsafe_permissions
 - NEVER do video/audio verification, selfie capture, ID photo upload, or biometric anything -> RESULT:FAILED:unsafe_verification
 - NEVER set up a freelancing profile (Mercor, Toptal, Upwork, Fiverr, Turing, etc.). These are contractor marketplaces, not job applications -> RESULT:FAILED:not_a_job_application
-- NEVER agree to hourly/contract rates, availability calendars, or "set your rate" flows. You are applying for FULL-TIME salaried positions only.
+- NEVER agree to hourly/contract rates, availability calendars, or "set your rate" flows. You are applying for FULL-TIME salaried positions only. If the posting is contract/hourly-only -> RESULT:FAILED:contract_only
 - NEVER install browser extensions, download executables, or run assessment software.
 - NEVER enter payment info, bank details, or SSN/SIN.
 - NEVER click "Allow" on any browser permission popup. Always deny/block.
@@ -568,12 +655,23 @@ If something unexpected happens and these instructions don't cover it, figure it
 5. Login wall?
    5a. FIRST: check the URL. If you landed on {', '.join(blocked_sso)}, or any SSO/OAuth page -> STOP. Output RESULT:FAILED:sso_required. Do NOT try to sign in to Google/Microsoft/SSO.
    5b. Check for popups. Run browser_tabs action "list". If a new tab/window appeared (login popup), switch to it with browser_tabs action "select". Check the URL there too -- if it's SSO -> RESULT:FAILED:sso_required.
-   5c. Regular login form (employer's own site)? Try sign in: {personal['email']} / {personal.get('password', '')}
+   5c. Check if the site matches a KNOWN CREDENTIAL below. If yes, use those credentials. Otherwise use default: {personal['email']} / {personal.get('password', '')}
+{_build_site_credentials_section(site_credentials)}
    5d. After clicking Login/Sign-in: run CAPTCHA DETECT. Login pages frequently have invisible CAPTCHAs that silently block form submissions. If found, solve it then retry login.
-   5e. Sign in failed? Try sign up with same email and password.
-   5f. Need email verification? Use search_emails + read_email to get the code.
-   5g. After login, run browser_tabs action "list" again. Switch back to the application tab if needed.
-   5h. All failed? Output RESULT:FAILED:login_issue. Do not loop.
+   5e. Sign in failed? Check if the current site's domain matches ANY of these NO-SIGNUP domains: {', '.join(no_signup_domains)}. If YES -> NEVER create an account. Output RESULT:FAILED:login_required immediately. The user will log in manually in the Chrome worker window, then retry.
+   5f. NOT a no-signup domain (i.e. it's an employer/ATS site like Workday, iCIMS, etc.)? Sign up IS allowed. Use email {personal['email']}. Generate a RANDOM 16-character password (mix of upper, lower, digits, symbols). After successful signup, output this line EXACTLY (JSON format):
+       ACCOUNT_CREATED:{{"site":"<company name>","email":"{personal['email']}","password":"<the generated password>","domain":"<site domain>"}}
+   5g. Need email verification (code or link)?
+       - Wait 5 seconds for the email to arrive.
+       - Use the Gmail MCP: search_emails with query "to:{personal['email']} subject:(verification OR verify OR confirm OR code OR activate) newer_than:2m" (or add the site name e.g. "to:{personal['email']} from:linkedin.com newer_than:2m"). ALWAYS include to:{personal['email']} to filter out personal mail.
+       - If no results, wait 10 more seconds and search again. Try up to 3 times.
+       - read_email to get the full message body. Extract the 4-8 digit code or the verification link.
+       - If it's a code: type it into the verification field and submit.
+       - If it's a link: browser_navigate to the link, then switch back to the application tab.
+       - If no email arrives after 3 attempts (~30s total): check spam/junk with query "to:{personal['email']} in:spam newer_than:5m". If still nothing, output RESULT:FAILED:login_required so the user can handle it manually.
+       - SMS/text verification: You CANNOT receive SMS codes. If the site requires SMS verification with no email option, output RESULT:FAILED:login_required immediately. The user will handle it manually.
+   5h. After login, run browser_tabs action "list" again. Switch back to the application tab if needed.
+   5i. All failed? Output RESULT:FAILED:login_issue. Do not loop.
 6. Upload resume. ALWAYS upload fresh -- delete any existing resume first, then browser_file_upload with the PDF path above. This is the tailored resume for THIS job. Non-negotiable.
 7. Upload cover letter if there's a field for it. Text field -> paste the cover letter text. File upload -> use the cover letter PDF path.
 8. Check ALL pre-filled fields. ATS systems parse your resume and auto-fill -- it's often WRONG.
@@ -584,11 +682,16 @@ If something unexpected happens and these instructions don't cover it, figure it
 11. After submit: browser_snapshot. Run CAPTCHA DETECT -- submit buttons often trigger invisible CAPTCHAs. If found, solve it (the form will auto-submit once the token clears, or you may need to click Submit again). Then check for new tabs (browser_tabs action: "list"). Switch to newest, close old. Snapshot to confirm submission. Look for "thank you" or "application received".
 12. Output your result.
 
+== CRITICAL: YOU MUST OUTPUT A RESULT CODE ==
+Your VERY LAST message MUST contain exactly one RESULT: line from below. This is NON-NEGOTIABLE. Every response you give MUST end with a RESULT line. If you submitted the form, output RESULT:APPLIED. If something went wrong, output the appropriate RESULT:FAILED:reason. If you are about to summarize your work or give a recommendation, you STILL must end with a RESULT line. NEVER end without a RESULT line — doing so is a bug in YOUR behavior.
+
 == RESULT CODES (output EXACTLY one) ==
 RESULT:APPLIED -- submitted successfully
 RESULT:EXPIRED -- job closed or no longer accepting applications
 RESULT:CAPTCHA -- blocked by unsolvable captcha
 RESULT:LOGIN_ISSUE -- could not sign in or create account
+RESULT:FAILED:login_required -- login failed on a major platform (LinkedIn, Indeed, etc.) — user must log in manually, then retry
+RESULT:FAILED:email_verification -- site requires email verification code you cannot retrieve. Do NOT wait for the user. Output this immediately.
 RESULT:FAILED:not_eligible_location -- onsite outside acceptable area, no remote option
 RESULT:FAILED:not_eligible_work_auth -- requires unauthorized work location
 RESULT:FAILED:reason -- any other failure (brief reason)
