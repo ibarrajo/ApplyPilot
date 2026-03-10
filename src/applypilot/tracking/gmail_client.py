@@ -20,9 +20,8 @@ log = logging.getLogger(__name__)
 GMAIL_MCP_DIR = Path.home() / ".gmail-mcp"
 OAUTH_KEYS_PATH = GMAIL_MCP_DIR / "gcp-oauth.keys.json"
 
-# Cloudflare Email Routing delivers to ibarra.josue91@gmail.com
-# but the To: header shows alex@elninja.com. Gmail's `to:` operator
-# matches on the header, so both work. We filter by the alias.
+# The To: header shows the alias address. Gmail's `to:` operator
+# matches on the header, so we filter by the alias directly.
 RECIPIENT = "alex@elninja.com"
 
 
