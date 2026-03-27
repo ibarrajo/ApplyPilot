@@ -90,6 +90,7 @@ def run(
         help="Parallel threads for Workday/smart-extract stages. (JobSpy runs sequentially regardless.)",
     ),
     stream: bool = typer.Option(False, "--stream", help="Run stages concurrently (streaming mode)."),
+    doc_format: str = typer.Option("pdf", "--doc-format", help="Document format for resumes/cover letters: pdf (default) or docx."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview stages without executing."),
     source: Optional[list[str]] = typer.Option(
         None, "--source", "-s",
@@ -137,6 +138,12 @@ def run(
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(code=1)
 
+    # Validate --doc-format
+    from applypilot.scoring.pdf import VALID_DOC_FORMATS
+    if doc_format not in VALID_DOC_FORMATS:
+        console.print(f"[red]Invalid --doc-format:[/red] '{doc_format}'. Must be one of: {', '.join(VALID_DOC_FORMATS)}")
+        raise typer.Exit(code=1)
+
     # Gate AI stages behind Tier 2
     llm_stages = {"score", "tailor", "cover"}
     if any(s in stage_list for s in llm_stages) or "all" in stage_list:
@@ -151,6 +158,7 @@ def run(
         stream=stream,
         workers=workers,
         sources=resolved_sources,
+        doc_format=doc_format,
     )
 
     if result.get("errors"):
@@ -168,6 +176,7 @@ def apply(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview actions without submitting."),
     headless: bool = typer.Option(False, "--headless", help="Run browsers in headless mode."),
     url: Optional[str] = typer.Option(None, "--url", help="Apply to a specific job URL."),
+    doc_format: str = typer.Option("pdf", "--doc-format", help="Document format for resumes/cover letters: pdf (default) or docx."),
     gen: bool = typer.Option(False, "--gen", help="Generate prompt file for manual debugging instead of running."),
     mark_applied: Optional[str] = typer.Option(None, "--mark-applied", help="Manually mark a job URL as applied."),
     fresh_sessions: bool = typer.Option(False, "--fresh-sessions", help="Refresh Chrome session cookies from your real profile before launching."),
@@ -238,6 +247,16 @@ def apply(
         return
 
     # --- Full apply mode ---
+
+    # Validate --doc-format
+    from applypilot.scoring.pdf import VALID_DOC_FORMATS as _valid_fmts
+    if doc_format not in _valid_fmts:
+        console.print(f"[red]Invalid --doc-format:[/red] '{doc_format}'. Must be one of: {', '.join(_valid_fmts)}")
+        raise typer.Exit(code=1)
+
+    # Set doc format for apply workers
+    from applypilot.apply.launcher import set_doc_format
+    set_doc_format(doc_format)
 
     # Check 1: Tier 3 required (Claude Code CLI + Chrome)
     check_tier(3, "auto-apply")

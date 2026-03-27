@@ -446,7 +446,7 @@ def tailor_resume(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
-def _tailor_one_job(job: dict, resume_text: str, profile: dict) -> dict:
+def _tailor_one_job(job: dict, resume_text: str, profile: dict, doc_format: str = "pdf") -> dict:
     """Tailor resume for a single job. Safe to call from multiple threads."""
     tailored, report = tailor_resume(resume_text, job, profile)
 
@@ -472,18 +472,18 @@ def _tailor_one_job(job: dict, resume_text: str, profile: dict) -> dict:
     report_path = TAILORED_DIR / f"{prefix}_REPORT.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
-    pdf_path = None
+    doc_path = None
     if report["status"] == "approved":
         try:
             from applypilot.scoring.pdf import convert_to_pdf
-            pdf_path = str(convert_to_pdf(txt_path))
+            doc_path = str(convert_to_pdf(txt_path, doc_format=doc_format))
         except Exception:
-            log.debug("PDF generation failed for %s", txt_path, exc_info=True)
+            log.debug("Document generation failed for %s", txt_path, exc_info=True)
 
     return {
         "url": job["url"],
         "path": str(txt_path),
-        "pdf_path": pdf_path,
+        "pdf_path": doc_path,
         "title": job["title"],
         "site": job["site"],
         "status": report["status"],
@@ -491,13 +491,14 @@ def _tailor_one_job(job: dict, resume_text: str, profile: dict) -> dict:
     }
 
 
-def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1) -> dict:
+def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
     """Generate tailored resumes for high-scoring jobs.
 
     Args:
         min_score: Minimum fit_score to tailor for.
         limit: Maximum jobs to process.
         workers: Parallel LLM threads (default 1 = sequential).
+        doc_format: Output document format — "pdf" (default) or "docx".
 
     Returns:
         {"approved": int, "failed": int, "errors": int, "elapsed": float}
@@ -522,7 +523,7 @@ def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1) -> dict
 
     if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_tailor_one_job, job, resume_text, profile): job for job in jobs}
+            futures = {pool.submit(_tailor_one_job, job, resume_text, profile, doc_format): job for job in jobs}
             for future in as_completed(futures):
                 job = futures[future]
                 completed += 1
@@ -549,7 +550,7 @@ def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1) -> dict
         for job in jobs:
             completed += 1
             try:
-                result = _tailor_one_job(job, resume_text, profile)
+                result = _tailor_one_job(job, resume_text, profile, doc_format)
             except Exception as e:
                 result = {
                     "url": job["url"], "title": job.get("title") or "", "site": job["site"],

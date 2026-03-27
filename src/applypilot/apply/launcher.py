@@ -46,6 +46,17 @@ from applypilot.apply.dashboard import (
 
 logger = logging.getLogger(__name__)
 
+# Document format for resume/cover letter uploads ("pdf" or "docx").
+# Set once by the CLI before workers start; read by run_job/gen_prompt.
+_doc_format: str = "pdf"
+
+
+def set_doc_format(fmt: str) -> None:
+    """Set the document format for apply uploads."""
+    global _doc_format
+    _doc_format = fmt
+
+
 # Blocked sites loaded from config/sites.yaml
 def _load_blocked():
     from applypilot.config import load_blocked_sites
@@ -1291,7 +1302,7 @@ def gen_prompt(target_url: str, min_score: int = 7, max_score: int | None = None
     if txt_path and txt_path.exists():
         resume_text = txt_path.read_text(encoding="utf-8")
 
-    prompt = prompt_mod.build_prompt(job=job, tailored_resume=resume_text)
+    prompt = prompt_mod.build_prompt(job=job, tailored_resume=resume_text, doc_format=_doc_format)
 
     # Release the lock so the job stays available
     release_lock(job["url"])
@@ -1737,6 +1748,7 @@ def run_job(job: dict, port: int, worker_id: int = 0,
         tailored_resume=resume_text,
         dry_run=dry_run,
         worker_id=worker_id,
+        doc_format=_doc_format,
     )
 
     # When resuming after user takeover: inject a RESUME banner so Claude does NOT

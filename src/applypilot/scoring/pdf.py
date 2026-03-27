@@ -1,13 +1,19 @@
-"""Text-to-PDF conversion for tailored resumes and cover letters.
+"""Text-to-PDF/DOCX conversion for tailored resumes and cover letters.
 
 Parses the structured text resume format, renders via an HTML/CSS template,
-and exports to PDF using headless Chromium via Playwright.
+and exports to PDF using headless Chromium via Playwright, or to DOCX using
+python-docx.
+
+Supported formats: "pdf" (default), "docx".
 """
 
 import logging
 from pathlib import Path
 
 from applypilot.config import TAILORED_DIR
+
+# Valid document output formats
+VALID_DOC_FORMATS = ("pdf", "docx")
 
 log = logging.getLogger(__name__)
 
@@ -355,34 +361,206 @@ def render_pdf(html: str, output_path: str) -> None:
         browser.close()
 
 
+# ── DOCX Renderer ────────────────────────────────────────────────────
+
+def render_docx(resume: dict, output_path: str) -> None:
+    """Render parsed resume data to a DOCX file using python-docx.
+
+    Args:
+        resume: Parsed resume dict from parse_resume().
+        output_path: Path to write the DOCX file.
+    """
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+
+    # Page margins (match PDF: 0.35in top/bottom, 0.5in left/right)
+    for section in doc.sections:
+        section.top_margin = Inches(0.35)
+        section.bottom_margin = Inches(0.35)
+        section.left_margin = Inches(0.5)
+        section.right_margin = Inches(0.5)
+
+    style = doc.styles["Normal"]
+    font = style.font
+    font.name = "Calibri"
+    font.size = Pt(10)
+    font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
+
+    pf = style.paragraph_format
+    pf.space_before = Pt(0)
+    pf.space_after = Pt(0)
+    pf.line_spacing = 1.35
+
+    # --- Header ---
+    name_para = doc.add_paragraph()
+    name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name_run = name_para.add_run(resume["name"])
+    name_run.bold = True
+    name_run.font.size = Pt(18)
+    name_run.font.color.rgb = RGBColor(0x1A, 0x3A, 0x5C)
+
+    if resume["title"]:
+        title_para = doc.add_paragraph()
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title_para.add_run(resume["title"])
+        title_run.font.size = Pt(10.5)
+        title_run.font.color.rgb = RGBColor(0x3A, 0x6B, 0x8C)
+
+    if resume["location"]:
+        loc_para = doc.add_paragraph()
+        loc_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        loc_run = loc_para.add_run(resume["location"])
+        loc_run.font.size = Pt(9)
+        loc_run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+
+    if resume["contact"]:
+        contact_para = doc.add_paragraph()
+        contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        contact_run = contact_para.add_run(resume["contact"])
+        contact_run.font.size = Pt(9)
+        contact_run.font.color.rgb = RGBColor(0x44, 0x44, 0x44)
+
+    sections = resume["sections"]
+
+    def _add_section_heading(title: str) -> None:
+        """Add a styled section heading with bottom border."""
+        para = doc.add_paragraph()
+        para.paragraph_format.space_before = Pt(5)
+        para.paragraph_format.space_after = Pt(3)
+        run = para.add_run(title.upper())
+        run.bold = True
+        run.font.size = Pt(10)
+        run.font.color.rgb = RGBColor(0x1A, 0x3A, 0x5C)
+        # Bottom border via XML (closest to the PDF blue line)
+        from docx.oxml.ns import qn
+        pPr = para._p.get_or_add_pPr()
+        pBdr = pPr.makeelement(qn("w:pBdr"), {})
+        bottom = pBdr.makeelement(qn("w:bottom"), {
+            qn("w:val"): "single",
+            qn("w:sz"): "6",
+            qn("w:space"): "1",
+            qn("w:color"): "2A7AB5",
+        })
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+    # --- Summary ---
+    if "SUMMARY" in sections:
+        _add_section_heading("Summary")
+        p = doc.add_paragraph(sections["SUMMARY"].strip())
+        p.runs[0].font.size = Pt(9.5)
+        p.runs[0].font.color.rgb = RGBColor(0x33, 0x33, 0x33)
+
+    # --- Technical Skills ---
+    if "TECHNICAL SKILLS" in sections:
+        _add_section_heading("Technical Skills")
+        for cat, val in parse_skills(sections["TECHNICAL SKILLS"]):
+            p = doc.add_paragraph()
+            cat_run = p.add_run(f"{cat}: ")
+            cat_run.bold = True
+            cat_run.font.size = Pt(9.5)
+            cat_run.font.color.rgb = RGBColor(0x1A, 0x3A, 0x5C)
+            val_run = p.add_run(val)
+            val_run.font.size = Pt(9.5)
+
+    # --- Experience ---
+    if "EXPERIENCE" in sections:
+        _add_section_heading("Experience")
+        for entry in parse_entries(sections["EXPERIENCE"]):
+            tp = doc.add_paragraph()
+            tp.paragraph_format.space_before = Pt(2)
+            tr = tp.add_run(entry["title"])
+            tr.bold = True
+            tr.font.size = Pt(10)
+            tr.font.color.rgb = RGBColor(0x1A, 0x3A, 0x5C)
+            if entry["subtitle"]:
+                sp = doc.add_paragraph()
+                sr = sp.add_run(entry["subtitle"])
+                sr.italic = True
+                sr.font.size = Pt(9)
+                sr.font.color.rgb = RGBColor(0x4A, 0x7A, 0x9B)
+            for bullet in entry["bullets"]:
+                bp = doc.add_paragraph(bullet, style="List Bullet")
+                for run in bp.runs:
+                    run.font.size = Pt(9.5)
+
+    # --- Projects ---
+    if "PROJECTS" in sections:
+        _add_section_heading("Projects")
+        for entry in parse_entries(sections["PROJECTS"]):
+            tp = doc.add_paragraph()
+            tp.paragraph_format.space_before = Pt(2)
+            tr = tp.add_run(entry["title"])
+            tr.bold = True
+            tr.font.size = Pt(10)
+            tr.font.color.rgb = RGBColor(0x1A, 0x3A, 0x5C)
+            if entry["subtitle"]:
+                sp = doc.add_paragraph()
+                sr = sp.add_run(entry["subtitle"])
+                sr.italic = True
+                sr.font.size = Pt(9)
+                sr.font.color.rgb = RGBColor(0x4A, 0x7A, 0x9B)
+            for bullet in entry["bullets"]:
+                bp = doc.add_paragraph(bullet, style="List Bullet")
+                for run in bp.runs:
+                    run.font.size = Pt(9.5)
+
+    # --- Education ---
+    if "EDUCATION" in sections:
+        _add_section_heading("Education")
+        p = doc.add_paragraph(sections["EDUCATION"].strip())
+        p.runs[0].font.size = Pt(10)
+
+    doc.save(output_path)
+
+
 # ── Public API ───────────────────────────────────────────────────────────
 
 def convert_to_pdf(
-    text_path: Path, output_path: Path | None = None, html_only: bool = False
+    text_path: Path,
+    output_path: Path | None = None,
+    html_only: bool = False,
+    doc_format: str = "pdf",
 ) -> Path:
-    """Convert a text resume/cover letter to PDF.
+    """Convert a text resume/cover letter to PDF or DOCX.
 
     Args:
         text_path: Path to the .txt file to convert.
         output_path: Optional override for the output path. Defaults to same
-            name with .pdf extension.
-        html_only: If True, output HTML instead of PDF.
+            name with the appropriate extension.
+        html_only: If True, output HTML instead of PDF/DOCX.
+        doc_format: Output format — "pdf" (default) or "docx".
 
     Returns:
-        Path to the generated PDF (or HTML) file.
+        Path to the generated file.
     """
+    if doc_format not in VALID_DOC_FORMATS:
+        raise ValueError(f"Invalid doc_format '{doc_format}'. Must be one of: {VALID_DOC_FORMATS}")
+
     text_path = Path(text_path)
     text = text_path.read_text(encoding="utf-8")
     resume = parse_resume(text)
-    html = build_html(resume)
 
     if html_only:
+        html = build_html(resume)
         out = output_path or text_path.with_suffix(".html")
         out = Path(out)
         out.write_text(html, encoding="utf-8")
         log.info("HTML generated: %s", out)
         return out
 
+    if doc_format == "docx":
+        out = output_path or text_path.with_suffix(".docx")
+        out = Path(out)
+        render_docx(resume, str(out))
+        log.info("DOCX generated: %s", out)
+        return out
+
+    # Default: PDF
+    html = build_html(resume)
     out = output_path or text_path.with_suffix(".pdf")
     out = Path(out)
     render_pdf(html, str(out))
@@ -390,51 +568,57 @@ def convert_to_pdf(
     return out
 
 
-def batch_convert(limit: int = 50) -> int:
-    """Convert .txt files in TAILORED_DIR that don't have corresponding PDFs.
+def batch_convert(limit: int = 50, doc_format: str = "pdf") -> int:
+    """Convert .txt files in TAILORED_DIR that don't have corresponding output files.
 
     Scans for .txt files (excluding _JOB.txt and _REPORT.json), checks if a
-    .pdf with the same stem already exists, and converts any that are missing.
+    file with the target extension already exists, and converts any that are missing.
 
     Args:
         limit: Maximum number of files to convert.
+        doc_format: Output format — "pdf" (default) or "docx".
 
     Returns:
-        Number of PDFs generated.
+        Number of files generated.
     """
+    if doc_format not in VALID_DOC_FORMATS:
+        raise ValueError(f"Invalid doc_format '{doc_format}'. Must be one of: {VALID_DOC_FORMATS}")
+
+    ext = f".{doc_format}"
+
     if not TAILORED_DIR.exists():
         log.warning("Tailored directory does not exist: %s", TAILORED_DIR)
         return 0
 
     txt_files = sorted(TAILORED_DIR.glob("*.txt"))
-    # Exclude _JOB.txt and _CL.txt files from resume conversion
+    # Exclude _JOB.txt files from resume conversion
     # (they get their own conversion calls)
     candidates = [
         f for f in txt_files
         if not f.name.endswith("_JOB.txt")
     ]
 
-    # Filter to those without a corresponding PDF
+    # Filter to those without a corresponding output file
     to_convert: list[Path] = []
     for f in candidates:
-        pdf_path = f.with_suffix(".pdf")
-        if not pdf_path.exists():
+        out_path = f.with_suffix(ext)
+        if not out_path.exists():
             to_convert.append(f)
         if len(to_convert) >= limit:
             break
 
     if not to_convert:
-        log.debug("All text files already have PDFs.")
+        log.debug("All text files already have %s files.", doc_format.upper())
         return 0
 
-    log.info("Converting %d files to PDF...", len(to_convert))
+    log.info("Converting %d files to %s...", len(to_convert), doc_format.upper())
     converted = 0
     for f in to_convert:
         try:
-            convert_to_pdf(f)
+            convert_to_pdf(f, doc_format=doc_format)
             converted += 1
         except Exception as e:
             log.error("Failed to convert %s: %s", f.name, e)
 
-    log.info("Done: %d/%d PDFs generated in %s", converted, len(to_convert), TAILORED_DIR)
+    log.info("Done: %d/%d %s files generated in %s", converted, len(to_convert), doc_format.upper(), TAILORED_DIR)
     return converted

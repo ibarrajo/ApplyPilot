@@ -544,7 +544,8 @@ def _build_qa_section() -> str:
 def build_prompt(job: dict, tailored_resume: str,
                  cover_letter: str | None = None,
                  dry_run: bool = False,
-                 worker_id: int = 0) -> str:
+                 worker_id: int = 0,
+                 doc_format: str = "pdf") -> str:
     """Build the full instruction prompt for the apply agent.
 
     Loads the user profile and search config internally. All personal data
@@ -564,23 +565,24 @@ def build_prompt(job: dict, tailored_resume: str,
     search_config = config.load_search_config()
     personal = profile["personal"]
 
-    # --- Resolve resume PDF path ---
+    # --- Resolve resume document path ---
+    doc_ext = f".{doc_format}"
     resume_path = job.get("tailored_resume_path")
     if not resume_path:
         raise ValueError(f"No tailored resume for job: {job.get('title', 'unknown')}")
 
-    src_pdf = Path(resume_path).with_suffix(".pdf").resolve()
-    if not src_pdf.exists():
-        raise ValueError(f"Resume PDF not found: {src_pdf}")
+    src_doc = Path(resume_path).with_suffix(doc_ext).resolve()
+    if not src_doc.exists():
+        raise ValueError(f"Resume {doc_format.upper()} not found: {src_doc}")
 
     # Copy to a clean filename for upload (recruiters see the filename)
     full_name = personal["full_name"]
     name_slug = full_name.replace(" ", "_")
     dest_dir = config.APPLY_WORKER_DIR / "current"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    upload_pdf = dest_dir / f"{name_slug}_Resume.pdf"
-    shutil.copy(str(src_pdf), str(upload_pdf))
-    pdf_path = str(upload_pdf)
+    upload_doc = dest_dir / f"{name_slug}_Resume{doc_ext}"
+    shutil.copy(str(src_doc), str(upload_doc))
+    pdf_path = str(upload_doc)
 
     # --- Cover letter handling ---
     cover_letter_text = cover_letter or ""
@@ -588,17 +590,17 @@ def build_prompt(job: dict, tailored_resume: str,
     cl_path = job.get("cover_letter_path")
     if cl_path and Path(cl_path).exists():
         cl_src = Path(cl_path)
-        # Read text from .txt sibling (PDF is binary)
+        # Read text from .txt sibling (binary formats aren't readable)
         cl_txt = cl_src.with_suffix(".txt")
         if cl_txt.exists():
             cover_letter_text = cl_txt.read_text(encoding="utf-8")
         elif cl_src.suffix == ".txt":
             cover_letter_text = cl_src.read_text(encoding="utf-8")
-        # Upload must be PDF
-        cl_pdf_src = cl_src.with_suffix(".pdf")
-        if cl_pdf_src.exists():
-            cl_upload = dest_dir / f"{name_slug}_Cover_Letter.pdf"
-            shutil.copy(str(cl_pdf_src), str(cl_upload))
+        # Upload document in the configured format
+        cl_doc_src = cl_src.with_suffix(doc_ext)
+        if cl_doc_src.exists():
+            cl_upload = dest_dir / f"{name_slug}_Cover_Letter{doc_ext}"
+            shutil.copy(str(cl_doc_src), str(cl_upload))
             cl_upload_path = str(cl_upload)
 
     # --- Build all prompt sections ---
@@ -697,14 +699,14 @@ Company: {job.get('site', 'Unknown')}
 Fit Score: {job.get('fit_score', 'N/A')}/10
 
 == FILES ==
-Resume PDF (upload this): {pdf_path}
-Cover Letter PDF (upload if asked): {cl_upload_path or "N/A"}
+Resume {doc_format.upper()} (upload this): {pdf_path}
+Cover Letter {doc_format.upper()} (upload if asked): {cl_upload_path or "N/A"}
 {optional_files_block}
 
 == RESUME TEXT (use when filling text fields) ==
 {tailored_resume}
 
-== COVER LETTER TEXT (paste if text field, upload PDF if file field) ==
+== COVER LETTER TEXT (paste if text field, upload {doc_format.upper()} if file field) ==
 {cl_display}
 
 == APPLICANT PROFILE ==
@@ -839,7 +841,7 @@ in the KNOWN SCREENING ANSWERS section. The form will still be open in the brows
 2. browser_snapshot to read the page. Then run CAPTCHA DETECT (see CAPTCHA section). If a CAPTCHA is found, solve it before continuing.
 3. LOCATION CHECK. Read the page for location info. If not eligible, output RESULT and stop.
 4. Find and click the Apply button. If email-only (page says "email resume to X"):
-   - send_email with subject "Application for {job['title']} -- {display_name}", body = 2-3 sentence pitch + contact info, attach resume PDF: ["{pdf_path}"]
+   - send_email with subject "Application for {job['title']} -- {display_name}", body = 2-3 sentence pitch + contact info, attach resume: ["{pdf_path}"]
    - Output RESULT:APPLIED. Done.
    After clicking Apply: browser_snapshot. Run CAPTCHA DETECT -- many sites trigger CAPTCHAs right after the Apply click. If found, solve before continuing.
 5. Login wall?
@@ -981,7 +983,7 @@ RESULT:FAILED:reason -- any other failure (brief reason)
 
 == FORM TRICKS ==
 - Popup/new window opened? browser_tabs action "list" to see all tabs. browser_tabs action "select" with the tab index to switch. ALWAYS check for new tabs after clicking login/apply/sign-in buttons.
-- "Upload your resume" pre-fill page (Workday, Lever, etc.): This is NOT the application form yet. Click "Select file" or the upload area, then browser_file_upload with the resume PDF path. Wait for parsing to finish. Then click Next/Continue to reach the actual form.
+- "Upload your resume" pre-fill page (Workday, Lever, etc.): This is NOT the application form yet. Click "Select file" or the upload area, then browser_file_upload with the resume file path. Wait for parsing to finish. Then click Next/Continue to reach the actual form.
 - File upload not working? Try: (1) browser_click the upload button/area, (2) browser_file_upload with the path. If still failing, look for a hidden file input or a "Select file" link and click that first.
 - Dropdown won't fill? browser_click to open it, then browser_click the option.
 - REACT DROPDOWNS (Greenhouse, NerdWallet, most modern ATS): NEVER use browser_select_option on React-controlled <select> elements — it sets the DOM value but doesn't fire React's synthetic onChange, so the form shows validation errors on submit even though the field looks filled. Instead: (1) browser_click the dropdown/select element to focus it, (2) browser_snapshot to see if a custom listbox appeared, (3) if a listbox appeared: browser_click the desired option in it; if no listbox: use browser_evaluate to dispatch a real React change event:

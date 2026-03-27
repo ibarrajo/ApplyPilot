@@ -30,6 +30,7 @@ dependencies = [
     "python-jobspy>=1.1",
     "markdownify>=0.14.1",
     "websocket-client>=1.0",
+    "python-docx>=1.1",
     ]
 
 [project.optional-dependencies]

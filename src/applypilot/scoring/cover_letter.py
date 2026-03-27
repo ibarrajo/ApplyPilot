@@ -169,7 +169,7 @@ def generate_cover_letter(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
-def _cover_one_job(job: dict, resume_text: str, profile: dict) -> dict:
+def _cover_one_job(job: dict, resume_text: str, profile: dict, doc_format: str = "pdf") -> dict:
     """Generate cover letter for a single job. Safe to call from multiple threads."""
     letter = generate_cover_letter(resume_text, job, profile)
 
@@ -181,29 +181,30 @@ def _cover_one_job(job: dict, resume_text: str, profile: dict) -> dict:
     cl_path = COVER_LETTER_DIR / f"{prefix}_CL.txt"
     cl_path.write_text(letter, encoding="utf-8")
 
-    pdf_path = None
+    doc_path = None
     try:
         from applypilot.scoring.pdf import convert_to_pdf
-        pdf_path = str(convert_to_pdf(cl_path))
+        doc_path = str(convert_to_pdf(cl_path, doc_format=doc_format))
     except Exception:
-        log.debug("PDF generation failed for %s", cl_path, exc_info=True)
+        log.debug("Document generation failed for %s", cl_path, exc_info=True)
 
     return {
         "url": job["url"],
         "path": str(cl_path),
-        "pdf_path": pdf_path,
+        "pdf_path": doc_path,
         "title": job["title"],
         "site": job["site"],
     }
 
 
-def run_cover_letters(min_score: int = 7, limit: int = 20, workers: int = 1) -> dict:
+def run_cover_letters(min_score: int = 7, limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
     """Generate cover letters for high-scoring jobs that have tailored resumes.
 
     Args:
         min_score: Minimum fit_score threshold.
         limit: Maximum jobs to process.
         workers: Parallel LLM threads (default 1 = sequential).
+        doc_format: Output document format — "pdf" (default) or "docx".
 
     Returns:
         {"generated": int, "errors": int, "elapsed": float}
@@ -251,7 +252,7 @@ def run_cover_letters(min_score: int = 7, limit: int = 20, workers: int = 1) -> 
 
     if workers > 1:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_cover_one_job, job, resume_text, profile): job for job in jobs}
+            futures = {pool.submit(_cover_one_job, job, resume_text, profile, doc_format): job for job in jobs}
             for future in as_completed(futures):
                 job = futures[future]
                 completed += 1
@@ -275,7 +276,7 @@ def run_cover_letters(min_score: int = 7, limit: int = 20, workers: int = 1) -> 
         for job in jobs:
             completed += 1
             try:
-                result = _cover_one_job(job, resume_text, profile)
+                result = _cover_one_job(job, resume_text, profile, doc_format)
                 elapsed = time.time() - t0
                 rate = completed / elapsed if elapsed > 0 else 0
                 log.info("%d/%d [OK] | %.1f jobs/min | %s", completed, len(jobs), rate * 60,
