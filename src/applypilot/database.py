@@ -12,7 +12,7 @@ import re as _re
 import sqlite3
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -700,6 +700,39 @@ def get_stats(conn: sqlite3.Connection | None = None) -> dict:
          "tailored": row[3], "needs_tailor": row[4], "errors": row[5]}
         for row in funnel_rows
     ]
+
+    # Funnel diagnostics (2026-04-23 funnel spec)
+    from applypilot.config import DEFAULTS, get_company_limit
+    max_age = DEFAULTS["max_job_age_days"]
+
+    # Ready-to-apply jobs that would be skipped by the age cutoff
+    stats["skipped_stale"] = conn.execute(
+        "SELECT COUNT(*) FROM jobs "
+        "WHERE tailored_resume_path IS NOT NULL "
+        "AND (apply_status IS NULL OR apply_status = 'failed') "
+        "AND (discovered_at IS NULL OR discovered_at <= datetime('now', ?))",
+        (f"-{max_age} days",),
+    ).fetchone()[0]
+
+    # Companies currently blocked by the per-company cap
+    in_flight = get_in_flight_by_company(conn)
+    blocked_companies: list[str] = []
+    for co, stamps in in_flight.items():
+        cap, window = get_company_limit(co)
+        if cap == 0:
+            blocked_companies.append(co)
+            continue
+        if cap < 0:
+            continue
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=window)).isoformat()
+        recent_count = sum(1 for ts in stamps if ts and ts > cutoff)
+        if recent_count >= cap:
+            blocked_companies.append(co)
+
+    stats["blocked_by_cap"] = {
+        "count": len(blocked_companies),
+        "companies": sorted(blocked_companies)[:20],
+    }
 
     return stats
 

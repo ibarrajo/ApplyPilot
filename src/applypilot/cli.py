@@ -537,6 +537,25 @@ def status() -> None:
 
         console.print(site_table)
 
+    # ── Funnel diagnostics ────────────────────────────────────────
+    if stats.get("skipped_stale"):
+        max_age = config.DEFAULTS["max_job_age_days"]
+        console.print(
+            f"\n[dim]Skipped as stale (>{max_age}d old): "
+            f"{stats['skipped_stale']} ready-to-apply jobs[/dim]"
+        )
+
+    bbc = stats.get("blocked_by_cap") or {}
+    if bbc.get("count"):
+        console.print(
+            f"\n[yellow]Blocked by company cap:[/yellow] "
+            f"{bbc['count']} company/companies"
+        )
+        if bbc.get("companies"):
+            preview = ", ".join(bbc["companies"][:10])
+            more = f" (+{bbc['count'] - 10} more)" if bbc["count"] > 10 else ""
+            console.print(f"  [dim]{preview}{more}[/dim]")
+
     console.print()
 
 
