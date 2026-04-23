@@ -285,6 +285,9 @@ def run_scoring(limit: int = 0, rescore: bool = False, workers: int = 1) -> dict
             query += f" LIMIT {limit}"
         jobs = conn.execute(query).fetchall()
     else:
+        # Note: get_jobs_by_stage now applies a 14-day discovered_at filter by
+        # default (config.DEFAULTS["max_job_age_days"]). Pass max_age_days=0
+        # to disable.
         jobs = get_jobs_by_stage(conn=conn, stage="pending_score", limit=limit)
 
     if not jobs:

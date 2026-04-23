@@ -507,6 +507,9 @@ def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1, doc_for
     resume_text = RESUME_PATH.read_text(encoding="utf-8")
     conn = get_connection()
 
+    # Note: get_jobs_by_stage now applies a 14-day discovered_at filter by
+    # default (config.DEFAULTS["max_job_age_days"]). Pass max_age_days=0
+    # to disable.
     jobs = get_jobs_by_stage(conn=conn, stage="pending_tailor", min_score=min_score, limit=limit)
     conn.commit()  # Close read transaction before long LLM phase
 

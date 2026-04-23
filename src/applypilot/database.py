@@ -1203,7 +1203,7 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
             "fit_score >= ? AND tailored_resume_path IS NOT NULL "
             "AND full_description IS NOT NULL "
             "AND (cover_letter_path IS NULL OR cover_letter_path = '') "
-            "AND COALESCE(cover_attempts, 0) < 5"
+            "AND COALESCE(cover_attempts, 0) < 5"   # keep in sync with cover_letter.MAX_ATTEMPTS
         ),
         "tailored": "tailored_resume_path IS NOT NULL",
         "pending_apply": (
@@ -1225,7 +1225,7 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
 
     # Age filter: only active when max_age_days > 0.
     # NULL discovered_at is excluded because `col > val` is NULL (→ falsy in WHERE).
-    if max_age_days and max_age_days > 0:
+    if max_age_days > 0:
         where += " AND discovered_at > datetime('now', ?)"
         params.append(f"-{max_age_days} days")
 
