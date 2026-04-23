@@ -71,10 +71,13 @@ overrides:
 
 
 def test_get_company_limit_malformed_yaml_falls_back(tmp_path, monkeypatch, caplog):
+    import logging
     from applypilot import config
+    caplog.set_level(logging.WARNING, logger="applypilot.config")
     monkeypatch.setattr(config, "APP_DIR", tmp_path)
     (tmp_path / "company_limits.yaml").write_text("{this: is: not: valid]", encoding="utf-8")
     config._company_limits_cache = None
     cap, window = config.get_company_limit("anycorp")
     assert cap == 3
     assert window == 30
+    assert "Failed to parse" in caplog.text
