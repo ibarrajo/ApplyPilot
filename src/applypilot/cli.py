@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from applypilot import __version__
+from applypilot import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,7 +84,18 @@ def run(
             "Defaults to 'all' if omitted."
         ),
     ),
-    min_score: int = typer.Option(7, "--min-score", help="Minimum fit score for tailor/cover stages."),
+    min_score: int = typer.Option(
+        config.DEFAULTS["min_score"], "--min-score",
+        help=f"Minimum fit score for tailor/cover stages (default: {config.DEFAULTS['min_score']}).",
+    ),
+    max_age_days: int = typer.Option(
+        config.DEFAULTS["max_job_age_days"], "--max-age-days",
+        help=(
+            "Skip jobs whose discovered_at is older than this many days. "
+            "0 = no age filter. "
+            f"Default: {config.DEFAULTS['max_job_age_days']}."
+        ),
+    ),
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Max jobs per stage (tailor/cover). Default: 20."),
     workers: int = typer.Option(
         1, "--workers", "-w",
@@ -153,6 +165,7 @@ def run(
     result = run_pipeline(
         stages=stage_list,
         min_score=min_score,
+        max_age_days=max_age_days,
         limit=limit,
         dry_run=dry_run,
         stream=stream,
@@ -169,7 +182,18 @@ def run(
 def apply(
     limit: Optional[int] = typer.Option(None, "--limit", "-l", help="Max applications to submit."),
     workers: int = typer.Option(5, "--workers", "-w", help="Number of parallel browser workers."),
-    min_score: int = typer.Option(7, "--min-score", help="Minimum fit score for job selection."),
+    min_score: int = typer.Option(
+        config.DEFAULTS["min_score"], "--min-score",
+        help=f"Minimum fit score for job selection (default: {config.DEFAULTS['min_score']}).",
+    ),
+    max_age_days: int = typer.Option(
+        config.DEFAULTS["max_job_age_days"], "--max-age-days",
+        help=(
+            "Skip jobs whose discovered_at is older than this many days. "
+            "0 = no age filter. "
+            f"Default: {config.DEFAULTS['max_job_age_days']}."
+        ),
+    ),
     max_score: Optional[int] = typer.Option(None, "--max-score", help="Maximum fit score for job selection (useful for testing on lower-score jobs)."),
     model: str = typer.Option("haiku", "--model", "-m", help="Claude model name."),
     continuous: bool = typer.Option(False, "--continuous", "-c", help="Run forever, polling for new jobs."),
@@ -322,6 +346,7 @@ def apply(
         limit=effective_limit,
         target_url=url,
         min_score=min_score,
+        max_age_days=max_age_days,
         max_score=max_score,
         headless=headless,
         model=model,
