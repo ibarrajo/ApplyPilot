@@ -1,10 +1,5 @@
 """Tests for funnel-optimization config additions."""
 
-from pathlib import Path
-
-import pytest
-
-
 def test_defaults_has_new_keys():
     from applypilot import config
     assert config.DEFAULTS["min_score"] == 8

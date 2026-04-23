@@ -310,6 +310,9 @@ def _load_company_limits() -> dict:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         if not isinstance(data, dict):
             raise ValueError(f"expected mapping, got {type(data).__name__}")
+        overrides = data.get("overrides", {}) or {}
+        if isinstance(overrides, dict):
+            data["overrides"] = {str(k).lower(): (v or {}) for k, v in overrides.items()}
         _company_limits_cache = data
     except Exception as e:
         log.warning("Failed to parse %s (%s); using defaults.", path, e)
@@ -326,6 +329,9 @@ def get_company_limit(company: str) -> tuple[int, int]:
       2. defaults.* (YAML)
       3. DEFAULTS["max_in_flight_per_company"] / ["in_flight_window_days"]
 
+    If a per-company entry omits either key, the missing value falls back
+    to the YAML defaults block (or DEFAULTS if not specified there).
+
     A cap of -1 means "unlimited". A cap of 0 means "explicitly blocked".
     Both are passed through as-is; interpretation lives in the caller.
     """
@@ -338,9 +344,8 @@ def get_company_limit(company: str) -> tuple[int, int]:
     overrides = limits.get("overrides", {}) or {}
     co = (company or "").lower().strip()
     if co:
-        normalized = {k.lower(): v for k, v in overrides.items()}
-        if co in normalized:
-            entry = normalized[co] or {}
+        if co in overrides:
+            entry = overrides[co] or {}
             cap = entry.get("max_in_flight", default_cap)
             window = entry.get("window_days", default_window)
             return int(cap), int(window)
