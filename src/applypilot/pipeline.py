@@ -402,7 +402,7 @@ def _run_stage_streaming(
     stage: str,
     tracker: _StageTracker,
     stop_event: threading.Event,
-    min_score: int = 7,
+    min_score: int | None = None,
     max_age_days: int | None = None,
     limit: int = 20,
     workers: int = 1,
@@ -415,6 +415,11 @@ def _run_stage_streaming(
     For all others: polls DB for pending work, runs the batch processor,
     and repeats until upstream is done and no pending work remains.
     """
+    from applypilot.config import DEFAULTS
+    if min_score is None:
+        min_score = DEFAULTS["min_score"]
+    if max_age_days is None:
+        max_age_days = DEFAULTS["max_job_age_days"]
     runner = _STAGE_RUNNERS[stage]
     kwargs: dict = {}
     if stage in ("tailor", "cover", "pdf"):
