@@ -174,6 +174,7 @@ Error patterns:
 | 26 | HN URL sanitization | Only stores http(s) URLs, deobfuscates emails, synthetic URLs for contact-only posts |
 | 27 | Basic prompt injection defense | LLM prompts instruct to treat input as untrusted. Minimal — not a sandbox. |
 | 28 | `--strict-mcp-config` for apply subprocess | Docker MCP Toolkit exposes duplicate Playwright tools that run in containers (can't access host files). Strict mode ensures only our local npx Playwright is available. |
+| 29 | Funnel config: min_score=8, age=14d, cap=3/30d | 2026-04-23 funnel-optimization spec (docs/superpowers/specs/). Replaces score=7 threshold and soft-sort deprioritization. All paid stages gate on `fit_score >= min_score` AND `discovered_at` within age cutoff. Hard per-company cap enforced in `acquire_job` via YAML overrides at `~/.applypilot/company_limits.yaml`. Disable age filter with `--max-age-days 0`. Per-company overrides: set `max_in_flight: 0` to block, `-1` to unlimit. |
 
 ---
 

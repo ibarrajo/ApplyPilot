@@ -1,0 +1,35 @@
+# ApplyPilot per-company application limits.
+#
+# Copy this file to ~/.applypilot/company_limits.yaml to activate overrides.
+# Missing file → the defaults in config.DEFAULTS apply to every company.
+#
+# Cap semantics:
+#   max_in_flight: N  — at most N jobs at this company may be in-flight at once.
+#   max_in_flight: 0  — block this company entirely (no new applications).
+#   max_in_flight: -1 — no cap (apply as many as queue allows).
+#
+# "In-flight" = apply_status IN ('applied', 'in_progress', 'needs_human')
+# AND COALESCE(applied_at, last_attempted_at) within window_days.
+# `manual` and `failed` DO NOT count — the company didn't see those.
+
+defaults:
+  max_in_flight: 3
+  window_days: 30
+
+overrides:
+  # Example: cap big brands where we want to be selective
+  # netflix:
+  #   max_in_flight: 1
+  #
+  # Example: hiring fast, shorter cooldown
+  # stripe:
+  #   max_in_flight: 5
+  #   window_days: 14
+  #
+  # Example: pause a company entirely
+  # google:
+  #   max_in_flight: 0
+  #
+  # Example: unlimited (no cap)
+  # openai:
+  #   max_in_flight: -1
