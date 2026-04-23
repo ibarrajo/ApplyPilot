@@ -1297,13 +1297,16 @@ def release_lock(url: str) -> None:
 # Utility modes (--gen, --mark-applied, --mark-failed, --reset-failed)
 # ---------------------------------------------------------------------------
 
-def gen_prompt(target_url: str, min_score: int = 7, max_score: int | None = None,
+def gen_prompt(target_url: str, min_score: int | None = None, max_score: int | None = None,
                model: str = "sonnet", worker_id: int = 0) -> Path | None:
     """Generate a prompt file and print the Claude CLI command for manual debugging.
 
     Returns:
         Path to the generated prompt file, or None if no job found.
     """
+    from applypilot import config as _cfg
+    if min_score is None:
+        min_score = _cfg.DEFAULTS["min_score"]
     job = acquire_job(target_url=target_url, min_score=min_score, max_score=max_score,
                       worker_id=worker_id)
     if not job:
