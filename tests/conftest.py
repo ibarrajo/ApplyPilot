@@ -15,6 +15,9 @@ from pathlib import Path
 
 import pytest
 
+# Module-level counter so repeated seed_job calls get unique URLs by default.
+_seed_counter = [0]
+
 
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):
@@ -29,6 +32,9 @@ def tmp_db(tmp_path, monkeypatch):
     db_file = tmp_path / "applypilot.db"
     monkeypatch.setattr(config, "DB_PATH", db_file)
     monkeypatch.setattr(config, "APP_DIR", tmp_path)
+    # database.DB_PATH is imported by-name at module load, so patching only
+    # config.DB_PATH leaves database.DB_PATH pointing at the real DB.
+    monkeypatch.setattr(database, "DB_PATH", db_file)
 
     # Reset the module-level thread-local connection cache so get_connection
     # opens fresh against the new tmp path.  _local.connections is a dict
@@ -60,13 +66,25 @@ def tmp_db(tmp_path, monkeypatch):
 
 @pytest.fixture
 def seed_job():
-    """Return a callable that inserts a minimally-valid job row into a connection."""
+    """Return a callable that inserts a minimally-valid job row into a connection.
+
+    Returns the full row dict so callers can assert on any field.
+    The URL is available at ``row["url"]``.
+
+    ``url_suffix`` is an optional keyword-only override (stripped before INSERT)
+    that customises the URL path segment.  When omitted an auto-incrementing
+    suffix is used so that repeated calls never collide on the UNIQUE ``url``
+    constraint.
+    """
     from datetime import datetime, timezone
 
-    def _seed(conn: sqlite3.Connection, **overrides) -> str:
+    def _seed(conn: sqlite3.Connection, **overrides) -> dict:
+        default_suffix = f"auto-{_seed_counter[0]}"
+        _seed_counter[0] += 1
+        suffix = overrides.get("url_suffix", default_suffix)
         now = datetime.now(timezone.utc).isoformat()
         row = {
-            "url": f"https://example.com/job/{overrides.get('url_suffix', 'default')}",
+            "url": f"https://example.com/job/{suffix}",
             "title": "Senior Software Engineer",
             "description": "A job.",
             "full_description": "A full description.",
@@ -86,6 +104,6 @@ def seed_job():
         qs = ", ".join("?" * len(row))
         conn.execute(f"INSERT INTO jobs ({cols}) VALUES ({qs})", tuple(row.values()))
         conn.commit()
-        return row["url"]
+        return row
 
     return _seed
