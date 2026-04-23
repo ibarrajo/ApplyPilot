@@ -29,7 +29,7 @@ from rich.console import Console
 from rich.live import Live
 
 from applypilot import config
-from applypilot.database import get_connection, categorize_apply_result
+from applypilot.database import get_connection, categorize_apply_result, get_in_flight_by_company
 from applypilot.apply import prompt as prompt_mod
 from applypilot.apply.chrome import (
     launch_chrome, cleanup_worker, kill_all_chrome,
@@ -1075,25 +1075,32 @@ def _db_retry_commit(conn: "sqlite3.Connection", timeout: float = 300.0) -> None
             delay = min(delay * 1.5, 30.0)
 
 
-def acquire_job(target_url: str | None = None, min_score: int = 7,
+def acquire_job(target_url: str | None = None,
+                min_score: int | None = None,
                 max_score: int | None = None,
+                max_age_days: int | None = None,
                 worker_id: int = 0) -> dict | None:
     """Atomically acquire the next job to apply to.
 
-    Args:
-        target_url: Apply to a specific URL instead of picking from queue.
-        min_score: Minimum fit_score threshold.
-        max_score: Maximum fit_score threshold (optional, for testing on lower-score jobs).
-        worker_id: Worker claiming this job (for tracking).
-
-    Returns:
-        Job dict or None if the queue is empty.
+    Enforces:
+      - Minimum fit score (config.DEFAULTS["min_score"] default)
+      - Job age cutoff (config.DEFAULTS["max_job_age_days"] default)
+      - Per-company open-pipeline cap (YAML-configurable)
+      - Per-company concurrency: at most 1 active worker per company
+      - Per-ATS concurrency: at most 1 active worker per ATS family
+      - Manual-ATS skip list
     """
+    from applypilot import config as _cfg
+    from datetime import datetime, timedelta, timezone
+
+    if min_score is None:
+        min_score = _cfg.DEFAULTS["min_score"]
+    if max_age_days is None:
+        max_age_days = _cfg.DEFAULTS["max_job_age_days"]
+
     conn = get_connection()
     try:
-        # Retry BEGIN IMMEDIATE with backoff — the DB may be write-locked by
-        # concurrent tailor/cover/pdf pipeline stages for up to several minutes.
-        _begin_deadline = time.monotonic() + 300  # wait up to 5 minutes
+        _begin_deadline = time.monotonic() + 300
         _begin_delay = 2.0
         while True:
             try:
@@ -1120,7 +1127,7 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
             like = f"%{target_url.split('?')[0].rstrip('/')}%"
             row = conn.execute("""
                 SELECT url, title, site, application_url, tailored_resume_path,
-                       fit_score, location, full_description, cover_letter_path
+                       fit_score, location, full_description, cover_letter_path, company
                 FROM jobs
                 WHERE (url = ? OR application_url = ? OR application_url LIKE ? OR url LIKE ?)
                   AND tailored_resume_path IS NOT NULL
@@ -1136,9 +1143,7 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
             url_filter = " AND ".join(f"url NOT LIKE '{p}'" for p in blocked_patterns) if blocked_patterns else "1=1"
             max_score_filter = f"AND j.fit_score <= {max_score}" if max_score is not None else ""
 
-            # ── Lane management ───────────────────────────────────────────────
-            # Rule 1 & 2: no more than one active worker per company OR per ATS.
-            # Query in-progress jobs to build exclusion sets.
+            # Per-worker concurrency: don't let two workers run the same company or ATS
             in_progress_rows = conn.execute(
                 "SELECT company, application_url FROM jobs WHERE apply_status = 'in_progress'"
             ).fetchall()
@@ -1151,7 +1156,6 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                 if ats:
                     active_ats.add(ats)
 
-            # Company exclusion handled in SQL (company is a column).
             if active_companies:
                 ph = ",".join("?" * len(active_companies))
                 company_excl = f"AND LOWER(COALESCE(j.company, '')) NOT IN ({ph})"
@@ -1160,26 +1164,20 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                 company_excl = ""
                 company_excl_params = []
 
-            # Rule 3: deprioritize companies with 2+ applications in the past 7 days.
-            # They stay in the queue but sort below companies with fewer recent apps.
+            # Age filter
+            age_filter = ""
+            age_params: list = []
+            if max_age_days and max_age_days > 0:
+                age_filter = "AND j.discovered_at > datetime('now', ?)"
+                age_params = [f"-{max_age_days} days"]
+
+            # Fetch candidates. No more soft-sort deprioritization — hard cap
+            # is enforced in Python below via get_company_limit().
             candidates = conn.execute(f"""
                 SELECT j.url, j.title, j.site, j.application_url,
                        j.tailored_resume_path, j.fit_score, j.location,
-                       j.full_description, j.cover_letter_path, j.company,
-                       COALESCE(rc.cnt, 0) AS recent_applied_count,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY COALESCE(j.company, j.url)
-                           ORDER BY j.fit_score DESC
-                       ) AS company_rank
+                       j.full_description, j.cover_letter_path, j.company
                 FROM jobs j
-                LEFT JOIN (
-                    SELECT company, COUNT(*) AS cnt
-                    FROM jobs
-                    WHERE apply_status = 'applied'
-                      AND last_attempted_at >= datetime('now', '-7 days')
-                      AND company IS NOT NULL
-                    GROUP BY company
-                ) rc ON LOWER(j.company) = LOWER(rc.company)
                 WHERE j.tailored_resume_path IS NOT NULL
                   AND (j.apply_status IS NULL OR j.apply_status = 'failed')
                   AND (j.apply_attempts IS NULL OR j.apply_attempts < {config.DEFAULTS["max_apply_attempts"]})
@@ -1188,33 +1186,49 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                   AND {site_filter}
                   AND {url_filter}
                   {company_excl}
-                ORDER BY
-                    CASE WHEN recent_applied_count >= 2 THEN 1 ELSE 0 END ASC,
-                    company_rank ASC,
-                    j.fit_score DESC,
-                    j.url
-                LIMIT 50
-            """, (min_score, *company_excl_params)).fetchall()
+                  {age_filter}
+                ORDER BY j.fit_score DESC, j.url
+                LIMIT 100
+            """, (min_score, *company_excl_params, *age_params)).fetchall()
 
-            # ATS exclusion: pick first candidate whose ATS is not currently active.
+            # Build in-flight buckets once, reuse for every candidate.
+            in_flight = get_in_flight_by_company(conn)
+            now_utc = datetime.now(timezone.utc)
+
+            def over_cap(company: str | None) -> bool:
+                if not company or not company.strip():
+                    return False
+                cap, window = _cfg.get_company_limit(company)
+                if cap < 0:
+                    return False
+                if cap == 0:
+                    return True
+                cutoff = (now_utc - timedelta(days=window)).isoformat()
+                count = sum(1 for ts in in_flight.get(company.lower(), [])
+                            if ts and ts > cutoff)
+                return count >= cap
+
+            # Pick first candidate whose company is under cap AND ATS lane is free.
             row = None
-            for candidate in candidates:
-                ats = detect_ats(candidate["application_url"] or candidate["url"] or "")
-                if ats is None or ats not in active_ats:
-                    row = candidate
-                    break
+            for cand in candidates:
+                if over_cap(cand["company"]):
+                    continue
+                ats = detect_ats(cand["application_url"] or cand["url"] or "")
+                if ats is not None and ats in active_ats:
+                    continue
+                row = cand
+                break
+
             if row is None and candidates:
-                # All candidates share an active ATS — log and skip this cycle.
                 logger.debug(
-                    "acquire_job: all candidates blocked by active ATS lanes %s; will retry",
-                    active_ats,
+                    "acquire_job: all %d candidates blocked (ATS lanes=%s, cap-blocked companies present)",
+                    len(candidates), active_ats,
                 )
 
         if not row:
             conn.rollback()
             return None
 
-        # Skip manual ATS sites (unsolvable CAPTCHAs)
         from applypilot.config import is_manual_ats
         apply_url = row["application_url"] or row["url"]
         if is_manual_ats(apply_url):
@@ -2328,7 +2342,9 @@ def _probe_for_reconnect(worker_id: int, port: int) -> tuple[int | None, str | N
 
 def worker_loop(worker_id: int = 0, limit: int = 1,
                 target_url: str | None = None,
-                min_score: int = 7, max_score: int | None = None,
+                min_score: int | None = None,
+                max_score: int | None = None,
+                max_age_days: int | None = None,
                 headless: bool = False,
                 model: str = "sonnet", dry_run: bool = False,
                 fresh_sessions: bool = False,
@@ -2342,6 +2358,7 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
         target_url: Apply to a specific URL.
         min_score: Minimum fit_score threshold.
         max_score: Maximum fit_score threshold (optional).
+        max_age_days: Maximum job age in days (optional).
         headless: Run Chrome headless.
         model: Claude model name.
         dry_run: Don't click Submit.
@@ -2351,6 +2368,12 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
     Returns:
         Tuple of (applied_count, failed_count).
     """
+    from applypilot import config as _cfg
+    if min_score is None:
+        min_score = _cfg.DEFAULTS["min_score"]
+    if max_age_days is None:
+        max_age_days = _cfg.DEFAULTS["max_job_age_days"]
+
     applied = 0
     failed = 0
     continuous = limit == 0
@@ -2362,8 +2385,8 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
     _start_worker_listener(worker_id)
     try:
         return _worker_loop_body(
-            worker_id, limit, target_url, min_score, max_score, headless,
-            model, dry_run, fresh_sessions, applied, failed, continuous,
+            worker_id, limit, target_url, min_score, max_score, max_age_days,
+            headless, model, dry_run, fresh_sessions, applied, failed, continuous,
             jobs_done, empty_polls, port, total_workers, no_hitl=no_hitl,
         )
     finally:
@@ -2372,7 +2395,8 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
 
 def _worker_loop_body(
     worker_id: int, limit: int, target_url: str | None,
-    min_score: int, max_score: int | None, headless: bool,
+    min_score: int, max_score: int | None, max_age_days: int | None,
+    headless: bool,
     model: str, dry_run: bool, fresh_sessions: bool,
     applied: int, failed: int, continuous: bool,
     jobs_done: int, empty_polls: int, port: int,
@@ -2397,7 +2421,8 @@ def _worker_loop_body(
         _reconnect_url = None  # clear after first use
 
         job = acquire_job(target_url=_effective_target, min_score=min_score,
-                          max_score=max_score, worker_id=worker_id)
+                          max_score=max_score, max_age_days=max_age_days,
+                          worker_id=worker_id)
         if not job:
             if not continuous:
                 add_event(f"[W{worker_id}] Queue empty")
@@ -2940,7 +2965,8 @@ def _prompt_user_for_qa(console: Console, worker_id: int,
 # ---------------------------------------------------------------------------
 
 def main(limit: int = 1, target_url: str | None = None,
-         min_score: int = 7, max_score: int | None = None,
+         min_score: int | None = None, max_score: int | None = None,
+         max_age_days: int | None = None,
          headless: bool = False, model: str = "sonnet",
          dry_run: bool = False, continuous: bool = False,
          poll_interval: int = 60, workers: int = 1,
@@ -2953,6 +2979,7 @@ def main(limit: int = 1, target_url: str | None = None,
         target_url: Apply to a specific URL.
         min_score: Minimum fit_score threshold.
         max_score: Maximum fit_score threshold (optional, for testing on lower-score jobs).
+        max_age_days: Maximum job age in days (optional).
         headless: Run Chrome in headless mode.
         model: Claude model name.
         dry_run: Don't click Submit.
@@ -3070,6 +3097,7 @@ def main(limit: int = 1, target_url: str | None = None,
                         target_url=target_url,
                         min_score=min_score,
                         max_score=max_score,
+                        max_age_days=max_age_days,
                         headless=headless,
                         model=model,
                         dry_run=dry_run,
