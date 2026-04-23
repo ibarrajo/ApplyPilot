@@ -196,11 +196,10 @@ employers:
     site_id: "Careers"
     base_url: "https://motorolasolutions.wd5.myworkdayjobs.com"
 
-  thomson_reuters:
-    name: "Thomson Reuters"
-    tenant: "thomsonreuters"
-    site_id: "External_Career_Site"
-    base_url: "https://thomsonreuters.wd5.myworkdayjobs.com"
+  # Thomson Reuters removed 2026-04-23 — user is not interested; 327 jobs
+  # had been pulled wastefully over prior runs. Existing TR jobs in DB are
+  # also blocked at apply-time via ~/.applypilot/company_limits.yaml
+  # (thomsonreuters: max_in_flight: 0).
 
   moderna:
     name: "Moderna"

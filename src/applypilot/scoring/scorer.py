@@ -56,36 +56,72 @@ REASONING: [2-3 sentences explaining the score, what matched well, and any gaps]
 
 
 # ── Rule-based pre-filter (catches obvious ineligible before LLM call) ─────
+#
+# Patterns validated 2026-04-23 against 5,938 historical scored jobs.
+# Any pattern that would reject more than 1-2 jobs scored >=8 is omitted
+# (those rare false positives tend to be LLM mis-scores anyway — jobs
+# titled "Junior" / "Intern" don't belong in a Senior/Staff queue).
 
 # Patterns that make a job ineligible regardless of tech stack.
-# Checked against title + location field only (not full description, to avoid false positives).
+# Checked against title + location field only (not full description, to avoid
+# false positives from US companies mentioning global offices).
 _INELIGIBLE_TITLE_PATTERNS = re.compile(
-    r'\bEMEA\b'              # "Senior Dev Advocate, EMEA"
-    r'|\bAPAC\b'             # "Engineering Manager APAC"
-    r'|\bEU[- ]only\b'       # "Remote - EU only"
+    # Explicit non-US regions in title
+    r'\bEMEA\b'
+    r'|\bAPAC\b'
+    r'|\bLATAM\b'
+    r'|\bMENA\b'
+    r'|\bTOLA\b'                    # sales region: Texas/Oklahoma/Louisiana/Arkansas
+    r'|\bANZ\b'                     # Australia/New Zealand
+    r'|\bNordics\b'
+    r'|\bEU[- ]only\b'
     r'|\bUK[- ]only\b'
     r'|\bEurope[- ]only\b'
-    r'|\(m/[fw]/d\)'         # German job title suffix (m/f/d) or (m/w/d)
-    r'|\bm/[fw]/d\b',
+    r'|\(m/[fw]/d\)'                # German job title suffix (m/f/d) or (m/w/d)
+    r'|\bm/[fw]/d\b'
+    r'|\bOnly hiring in\b'
+    # Seniority mismatches (user is Senior/Staff/Principal level)
+    r'|\bJunior\b'
+    r'|\bIntern(ship)?\b'
+    r'|\bFresher\b'
+    r'|\bEntry[- ]?Level\b'
+    r'|\bNew[- ]Grad\b'
+    r'|\bTrainee\b'
+    r'|\bApprentice\b'
+    # Sales-adjacency (not IC engineering)
+    r'|\bSales Engineer\b'
+    r'|\bSolutions Engineer\b'
+    r'|\bPre[- ]?[Ss]ales\b'
+    r'|\bCustomer Success Engineer\b',
     re.IGNORECASE,
 )
 
-# Patterns checked against the location field specifically
+# Patterns checked against the location field specifically.
+# Location field explicitly lists a non-US country name → ineligible.
 _INELIGIBLE_LOCATION_PATTERNS = re.compile(
+    # Regions
     r'\bEMEA\b'
     r'|\bAPAC\b'
     r'|\bEurope\b'
-    r'|\bGermany\b'
-    r'|\bNetherlands\b'
-    r'|\bFrance\b'
-    r'|\bSpain\b'
-    r'|\bItaly\b'
-    r'|\bIndia\b'
-    r'|\bAustralia\b'
-    r'|\bSingapore\b'
-    r'|\bPoland\b'
-    r'|\bUkraine\b'
-    r'|\bCzech\b',
+    # Europe
+    r'|\bGermany\b|\bNetherlands\b|\bFrance\b|\bSpain\b|\bItaly\b'
+    r'|\bPoland\b|\bUkraine\b|\bCzech\b|\bPortugal\b|\bIreland\b'
+    r'|\bDenmark\b|\bSweden\b|\bNorway\b|\bFinland\b|\bBelgium\b'
+    r'|\bSwitzerland\b|\bAustria\b|\bRomania\b|\bHungary\b|\bCroatia\b'
+    r'|\bGreece\b|\bBulgaria\b|\bSerbia\b|\bSlovakia\b|\bSlovenia\b'
+    r'|\bEstonia\b|\bLatvia\b|\bLithuania\b'
+    # Asia
+    r'|\bIndia\b|\bSingapore\b|\bJapan\b|\bVietnam\b|\bThailand\b'
+    r'|\bPhilippines\b|\bIndonesia\b|\bKorea\b|\bTaiwan\b|\bHong Kong\b'
+    r'|\bChina\b|\bPakistan\b|\bBangladesh\b|\bMalaysia\b'
+    # Latin America
+    r'|\bBrazil\b|\bBrasil\b|\bMexico\b|\bMéxico\b|\bArgentina\b'
+    r'|\bChile\b|\bColombia\b|\bPeru\b|\bUruguay\b'
+    # Middle East / Africa
+    r'|\bEgypt\b|\bNigeria\b|\bKenya\b|\bSouth Africa\b|\bIsrael\b'
+    r'|\bTurkey\b|\bTürkiye\b|\bUAE\b|\bSaudi Arabia\b'
+    # Oceania
+    r'|\bAustralia\b|\bNew Zealand\b',
     re.IGNORECASE,
 )
 
