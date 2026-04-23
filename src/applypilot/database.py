@@ -1151,32 +1151,43 @@ def delete_account(domain: str,
 def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
                       stage: str = "discovered",
                       min_score: int | None = None,
+                      max_age_days: int | None = None,
                       limit: int = 100) -> list[dict]:
     """Fetch jobs filtered by pipeline stage.
 
     Args:
         conn: Database connection. Uses get_connection() if None.
-        stage: One of "discovered", "enriched", "scored", "tailored", "applied".
+        stage: One of "discovered", "enriched", "scored", "tailored", "applied",
+               "pending_score", "pending_tailor", "pending_apply", "pending_cover".
         min_score: Minimum fit_score filter (only relevant for scored+ stages).
-        limit: Maximum number of rows to return.
+        max_age_days: Exclude jobs with discovered_at older than this many days.
+                      None uses config.DEFAULTS["max_job_age_days"]. 0 disables.
+                      NULL discovered_at is treated as stale (excluded) when
+                      filter is active.
+        limit: Maximum number of rows to return (0 = no limit).
 
     Returns:
         List of job dicts.
     """
+    from applypilot.config import DEFAULTS
+
     if conn is None:
         conn = get_connection()
+
+    if min_score is None:
+        min_score = DEFAULTS["min_score"]
+    if max_age_days is None:
+        max_age_days = DEFAULTS["max_job_age_days"]
 
     conditions = {
         "discovered": "1=1",
         "pending_detail": (
-            # Never scraped, OR a retriable error whose backoff window has elapsed
             "detail_scraped_at IS NULL "
             "OR (detail_error_category = 'retriable' "
             "    AND (detail_next_retry_at IS NULL OR detail_next_retry_at <= datetime('now')))"
         ),
         "enriched": "full_description IS NOT NULL",
         "pending_score": (
-            # Unscored jobs, OR scoring failed but backoff window has elapsed
             "full_description IS NOT NULL AND ("
             "  (fit_score IS NULL AND score_error IS NULL) "
             "  OR (score_error IS NOT NULL AND score_retry_count < 5 "
@@ -1187,6 +1198,12 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
         "pending_tailor": (
             "fit_score >= ? AND full_description IS NOT NULL "
             "AND tailored_resume_path IS NULL AND COALESCE(tailor_attempts, 0) < 5"
+        ),
+        "pending_cover": (
+            "fit_score >= ? AND tailored_resume_path IS NOT NULL "
+            "AND full_description IS NOT NULL "
+            "AND (cover_letter_path IS NULL OR cover_letter_path = '') "
+            "AND COALESCE(cover_attempts, 0) < 5"
         ),
         "tailored": "tailored_resume_path IS NOT NULL",
         "pending_apply": (
@@ -1199,14 +1216,18 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
     where = conditions.get(stage, "1=1")
     params: list = []
 
-    if "?" in where and min_score is not None:
+    if "?" in where:
         params.append(min_score)
-    elif "?" in where:
-        params.append(7)  # default min_score
 
-    if min_score is not None and "fit_score" not in where and stage in ("scored", "tailored", "applied"):
+    if stage in ("scored", "tailored", "applied") and "fit_score" not in where:
         where += " AND fit_score >= ?"
         params.append(min_score)
+
+    # Age filter: only active when max_age_days > 0.
+    # NULL discovered_at is excluded because `col > val` is NULL (→ falsy in WHERE).
+    if max_age_days and max_age_days > 0:
+        where += " AND discovered_at > datetime('now', ?)"
+        params.append(f"-{max_age_days} days")
 
     query = f"""
         SELECT * FROM (
@@ -1223,12 +1244,10 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
         params.append(limit)
 
     rows = conn.execute(query, params).fetchall()
-
-    # Convert sqlite3.Row objects to dicts
-    if rows:
+    if rows and not isinstance(rows[0], dict):
         columns = rows[0].keys()
-        return [dict(zip(columns, row)) for row in rows]
-    return []
+        rows = [dict(zip(columns, r)) for r in rows]
+    return rows
 
 
 def get_needs_human_jobs(conn: sqlite3.Connection | None = None) -> list[dict]:
