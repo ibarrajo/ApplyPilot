@@ -1325,7 +1325,7 @@ def get_applied_jobs(conn: sqlite3.Connection | None = None) -> list[dict]:
 
 
 def get_in_flight_by_company(conn: sqlite3.Connection | None = None,
-                             max_window_days: int = 90) -> dict[str, list[str]]:
+                             max_window_days: int = 365) -> dict[str, list[str]]:
     """Return {company_lower: [timestamp_iso, ...]} for all recent in-flight jobs.
 
     "In-flight" = apply_status IN ('applied', 'in_progress', 'needs_human').
@@ -1335,8 +1335,9 @@ def get_in_flight_by_company(conn: sqlite3.Connection | None = None,
     and rows with TRIM(company) == '' are skipped; the caller handles
     NULL/empty-company exemption separately.
 
-    max_window_days bounds the query scan. Callers filter the returned
-    lists by their specific per-company window.
+    max_window_days bounds the query scan. Default 365d comfortably covers
+    any reasonable `window_days` override in ~/.applypilot/company_limits.yaml;
+    callers filter the returned lists by their own per-company window.
     """
     if conn is None:
         conn = get_connection()
