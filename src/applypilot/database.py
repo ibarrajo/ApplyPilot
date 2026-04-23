@@ -601,10 +601,12 @@ def get_stats(conn: sqlite3.Connection | None = None) -> dict:
         "SELECT COUNT(*) FROM jobs WHERE tailored_resume_path IS NOT NULL"
     ).fetchone()[0]
 
+    from applypilot.config import DEFAULTS as _DEFAULTS
     stats["untailored_eligible"] = conn.execute(
         "SELECT COUNT(*) FROM jobs "
-        "WHERE fit_score >= 7 AND full_description IS NOT NULL "
-        "AND tailored_resume_path IS NULL"
+        "WHERE fit_score >= ? AND full_description IS NOT NULL "
+        "AND tailored_resume_path IS NULL",
+        (_DEFAULTS["min_score"],),
     ).fetchone()[0]
 
     stats["tailor_exhausted"] = conn.execute(
