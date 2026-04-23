@@ -1289,6 +1289,40 @@ def get_applied_jobs(conn: sqlite3.Connection | None = None) -> list[dict]:
     return []
 
 
+def get_in_flight_by_company(conn: sqlite3.Connection | None = None,
+                             max_window_days: int = 90) -> dict[str, list[str]]:
+    """Return {company_lower: [timestamp_iso, ...]} for all recent in-flight jobs.
+
+    "In-flight" = apply_status IN ('applied', 'in_progress', 'needs_human').
+    `manual` and `failed` are excluded — the company didn't see those.
+
+    Timestamp is COALESCE(applied_at, last_attempted_at). NULL-company rows
+    and rows with TRIM(company) == '' are skipped; the caller handles
+    NULL/empty-company exemption separately.
+
+    max_window_days bounds the query scan. Callers filter the returned
+    lists by their specific per-company window.
+    """
+    if conn is None:
+        conn = get_connection()
+
+    rows = conn.execute("""
+        SELECT LOWER(company) AS co,
+               COALESCE(applied_at, last_attempted_at) AS ts
+        FROM jobs
+        WHERE apply_status IN ('applied', 'in_progress', 'needs_human')
+          AND company IS NOT NULL AND TRIM(company) != ''
+          AND COALESCE(applied_at, last_attempted_at) IS NOT NULL
+          AND COALESCE(applied_at, last_attempted_at) > datetime('now', ?)
+    """, (f"-{max_window_days} days",)).fetchall()
+
+    from collections import defaultdict
+    out: dict[str, list[str]] = defaultdict(list)
+    for r in rows:
+        out[r["co"]].append(r["ts"])
+    return dict(out)
+
+
 def create_stub_job(email: dict, classification: str,
                     conn: sqlite3.Connection | None = None) -> str:
     """Create a minimal job entry from an unmatched application email.
