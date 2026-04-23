@@ -197,48 +197,39 @@ def _cover_one_job(job: dict, resume_text: str, profile: dict, doc_format: str =
     }
 
 
-def run_cover_letters(min_score: int = 7, limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
+def run_cover_letters(min_score: int | None = None, limit: int = 20, workers: int = 1,
+                      doc_format: str = "pdf", max_age_days: int | None = None) -> dict:
     """Generate cover letters for high-scoring jobs that have tailored resumes.
 
     Args:
-        min_score: Minimum fit_score threshold.
+        min_score: Minimum fit_score threshold (default from config).
         limit: Maximum jobs to process.
         workers: Parallel LLM threads (default 1 = sequential).
         doc_format: Output document format — "pdf" (default) or "docx".
+        max_age_days: Skip jobs older than this (default from config).
 
     Returns:
         {"generated": int, "errors": int, "elapsed": float}
     """
+    from applypilot.config import DEFAULTS
+    from applypilot.database import get_jobs_by_stage
+    if min_score is None:
+        min_score = DEFAULTS["min_score"]
+
     profile = load_profile()
     resume_text = RESUME_PATH.read_text(encoding="utf-8")
     conn = get_connection()
 
-    # Fetch jobs that have tailored resumes but no cover letter yet
-    jobs = conn.execute(
-        "SELECT * FROM ("
-        "    SELECT *, ROW_NUMBER() OVER ("
-        "        PARTITION BY COALESCE(site, 'unknown')"
-        "        ORDER BY discovered_at DESC"
-        "    ) AS _site_rank"
-        "    FROM jobs"
-        "    WHERE fit_score >= ? AND tailored_resume_path IS NOT NULL"
-        "    AND full_description IS NOT NULL"
-        "    AND (cover_letter_path IS NULL OR cover_letter_path = '')"
-        "    AND COALESCE(cover_attempts, 0) < ?"
-        ") ORDER BY fit_score DESC NULLS LAST, _site_rank ASC, discovered_at DESC"
-        " LIMIT ?",
-        (min_score, MAX_ATTEMPTS, limit),
-    ).fetchall()
+    # Note: get_jobs_by_stage applies a 14-day discovered_at filter by default
+    # (config.DEFAULTS["max_job_age_days"]). Pass max_age_days=0 to disable.
+    jobs = get_jobs_by_stage(conn=conn, stage="pending_cover",
+                             min_score=min_score, max_age_days=max_age_days,
+                             limit=limit)
     conn.commit()  # Close read transaction before long LLM phase
 
     if not jobs:
         log.info("No jobs needing cover letters (score >= %d).", min_score)
         return {"generated": 0, "errors": 0, "elapsed": 0.0}
-
-    # Convert rows to dicts
-    if jobs and not isinstance(jobs[0], dict):
-        columns = jobs[0].keys()
-        jobs = [dict(zip(columns, row)) for row in jobs]
 
     COVER_LETTER_DIR.mkdir(parents=True, exist_ok=True)
     log.info(

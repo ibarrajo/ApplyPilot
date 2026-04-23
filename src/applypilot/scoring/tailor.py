@@ -491,18 +491,24 @@ def _tailor_one_job(job: dict, resume_text: str, profile: dict, doc_format: str 
     }
 
 
-def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
+def run_tailoring(min_score: int | None = None, limit: int = 20, workers: int = 1,
+                  doc_format: str = "pdf", max_age_days: int | None = None) -> dict:
     """Generate tailored resumes for high-scoring jobs.
 
     Args:
-        min_score: Minimum fit_score to tailor for.
+        min_score: Minimum fit_score to tailor for (default from config).
         limit: Maximum jobs to process.
         workers: Parallel LLM threads (default 1 = sequential).
         doc_format: Output document format — "pdf" (default) or "docx".
+        max_age_days: Skip jobs older than this (default from config).
 
     Returns:
         {"approved": int, "failed": int, "errors": int, "elapsed": float}
     """
+    from applypilot.config import DEFAULTS
+    if min_score is None:
+        min_score = DEFAULTS["min_score"]
+
     profile = load_profile()
     resume_text = RESUME_PATH.read_text(encoding="utf-8")
     conn = get_connection()
@@ -510,7 +516,9 @@ def run_tailoring(min_score: int = 7, limit: int = 20, workers: int = 1, doc_for
     # Note: get_jobs_by_stage now applies a 14-day discovered_at filter by
     # default (config.DEFAULTS["max_job_age_days"]). Pass max_age_days=0
     # to disable.
-    jobs = get_jobs_by_stage(conn=conn, stage="pending_tailor", min_score=min_score, limit=limit)
+    jobs = get_jobs_by_stage(conn=conn, stage="pending_tailor",
+                             min_score=min_score, max_age_days=max_age_days,
+                             limit=limit)
     conn.commit()  # Close read transaction before long LLM phase
 
     if not jobs:

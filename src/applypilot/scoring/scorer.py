@@ -265,7 +265,8 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
                          retry_count + 1, MAX_SCORE_RETRIES, delay, r["url"][:60])
 
 
-def run_scoring(limit: int = 0, rescore: bool = False, workers: int = 1) -> dict:
+def run_scoring(limit: int = 0, rescore: bool = False, workers: int = 1,
+                max_age_days: int | None = None) -> dict:
     """Score unscored jobs that have full descriptions.
 
     Args:
@@ -288,7 +289,8 @@ def run_scoring(limit: int = 0, rescore: bool = False, workers: int = 1) -> dict
         # Note: get_jobs_by_stage now applies a 14-day discovered_at filter by
         # default (config.DEFAULTS["max_job_age_days"]). Pass max_age_days=0
         # to disable.
-        jobs = get_jobs_by_stage(conn=conn, stage="pending_score", limit=limit)
+        jobs = get_jobs_by_stage(conn=conn, stage="pending_score",
+                                 max_age_days=max_age_days, limit=limit)
 
     if not jobs:
         log.info("No unscored jobs with descriptions found.")
