@@ -23,7 +23,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
-from applypilot.database import init_db
+from applypilot.database import init_db, transition_state
 from applypilot.llm import get_client
 
 log = logging.getLogger(__name__)
@@ -606,6 +606,62 @@ def _classify_detail_error(error: str, current_retry_count: int) -> tuple[str, s
     return "permanent", None
 
 
+def _mark_enrich_result(
+    conn,
+    url: str,
+    *,
+    status: str,
+    full_description: str | None,
+    application_url: str | None,
+    error: str | None,
+    tier: int | None,
+    retry_count: int,
+    now: str | None = None,
+) -> None:
+    """Persist one enrichment result and emit a state transition.
+
+    Extracted from the inline UPDATE blocks inside ``run_detail_scraper`` so
+    that tests can call it without launching a browser.
+
+    ``status`` should be one of: ``"ok"``, ``"partial"``, ``"error"``.
+    Retriable errors do NOT emit a transition (job stays in ``discovered``).
+    """
+    if now is None:
+        now = datetime.now(timezone.utc).isoformat()
+
+    if status in ("ok", "partial"):
+        conn.execute(
+            "UPDATE jobs SET full_description = ?, application_url = ?, "
+            "detail_scraped_at = ?, detail_error = NULL, "
+            "detail_error_category = NULL, enrich_attempts = 0, "
+            "enrich_next_retry_at = NULL WHERE url = ?",
+            (full_description, application_url, now, url),
+        )
+        transition_state(
+            conn, url, "enriched",
+            reason="description fetched",
+            metadata={"chars": len(full_description or ""), "tier": tier},
+            force=True,
+        )
+    else:
+        error_msg = error or "unknown"
+        category, next_retry_at = _classify_detail_error(error_msg, retry_count)
+        conn.execute(
+            "UPDATE jobs SET detail_error = ?, detail_error_category = ?, "
+            "enrich_attempts = ?, enrich_next_retry_at = ?, "
+            "detail_scraped_at = ? WHERE url = ?",
+            (error_msg, category, retry_count + 1, next_retry_at, now, url),
+        )
+        if category != "retriable":
+            transition_state(
+                conn, url, "enrich_failed",
+                reason=category,
+                metadata={"error": error_msg},
+                force=True,
+            )
+        # retriable: no transition — job stays in 'discovered' for retry loop
+
+
 def scrape_detail_page(page, url: str) -> dict:
     """Full cascade for one detail page."""
     result: dict = {
@@ -742,31 +798,39 @@ def scrape_site_batch(
 
                 if status in ("ok", "partial"):
                     stats[status] += 1
-                    conn.execute(
-                        "UPDATE jobs SET full_description = ?, application_url = ?, "
-                        "detail_scraped_at = ?, detail_error = NULL, "
-                        "detail_error_category = NULL, enrich_attempts = 0, "
-                        "enrich_next_retry_at = NULL WHERE url = ?",
-                        (result.get("full_description"), result.get("application_url"), now, url),
+                    _mark_enrich_result(
+                        conn, url,
+                        status=status,
+                        full_description=result.get("full_description"),
+                        application_url=result.get("application_url"),
+                        error=None,
+                        tier=tier,
+                        retry_count=0,
+                        now=now,
                     )
                 else:
                     stats["error"] += 1
-                    error_msg = result.get("error", "unknown")
-                    # Fetch current retry count before classifying
+                    # Fetch current retry count before classifying so the
+                    # helper can compute the right backoff window.
                     row = conn.execute(
                         "SELECT COALESCE(enrich_attempts, 0) FROM jobs WHERE url = ?", (url,)
                     ).fetchone()
                     retry_count = row[0] if row else 0
-                    category, next_retry_at = _classify_detail_error(error_msg, retry_count)
-                    conn.execute(
-                        "UPDATE jobs SET detail_error = ?, detail_error_category = ?, "
-                        "enrich_attempts = ?, enrich_next_retry_at = ?, "
-                        "detail_scraped_at = ? WHERE url = ?",
-                        (error_msg, category, retry_count + 1, next_retry_at, now, url),
-                    )
+                    error_msg = result.get("error", "unknown")
+                    _cat, _next = _classify_detail_error(error_msg, retry_count)
                     log.info("  error_category=%s retry=%d/%d next=%s",
-                             category, retry_count + 1, MAX_DETAIL_RETRIES,
-                             next_retry_at or "never")
+                             _cat, retry_count + 1, MAX_DETAIL_RETRIES,
+                             _next or "never")
+                    _mark_enrich_result(
+                        conn, url,
+                        status=status,
+                        full_description=None,
+                        application_url=None,
+                        error=error_msg,
+                        tier=tier,
+                        retry_count=retry_count,
+                        now=now,
+                    )
 
                 conn.commit()
 

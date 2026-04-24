@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from applypilot.config import RESUME_PATH, TAILORED_DIR, load_profile
-from applypilot.database import get_connection, get_jobs_by_stage, write_with_retry
+from applypilot.database import get_connection, get_jobs_by_stage, transition_state, write_with_retry
 from applypilot.llm import get_client
 from applypilot.scoring.validator import (
     sanitize_text,
@@ -595,6 +595,58 @@ def _tailor_one_job(job: dict, resume_text: str, profile: dict, doc_format: str 
     }
 
 
+def _mark_tailor_result(
+    conn,
+    url: str,
+    status: str,
+    path: str | None,
+    *,
+    attempts: int | None = None,
+    now: str | None = None,
+) -> None:
+    """Persist one tailor result to the DB and emit a state transition.
+
+    Extracted from the inner ``_flush_tailor_results`` so that tests can
+    call it directly without running the full LLM pipeline.
+
+    ``status`` should be one of: ``"approved"``, ``"failed_validation"``,
+    ``"failed_judge"``, ``"error"``, ``"exhausted_retries"``.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc).isoformat()
+
+    if status == "approved":
+        # Write path first, then increment counter so a later flush error
+        # cannot lose the counter without losing the path too.
+        conn.execute(
+            "UPDATE jobs SET tailored_resume_path=?, tailored_at=? WHERE url=?",
+            (path, now, url),
+        )
+        transition_state(
+            conn, url, "tailored",
+            reason="tailored OK",
+            metadata={"attempts": attempts, "path": path},
+            force=True,
+        )
+        conn.execute(
+            "UPDATE jobs SET tailor_attempts = COALESCE(tailor_attempts, 0) + 1 "
+            "WHERE url = ?",
+            (url,),
+        )
+    else:
+        conn.execute(
+            "UPDATE jobs SET tailor_attempts = COALESCE(tailor_attempts, 0) + 1 "
+            "WHERE url = ?",
+            (url,),
+        )
+        transition_state(
+            conn, url, "tailor_failed",
+            reason=status,
+            metadata={"attempts": attempts},
+            force=True,
+        )
+
+
 def run_tailoring(min_score: int | None = None, limit: int = 20, workers: int = 1,
                   doc_format: str = "docx", max_age_days: int | None = None) -> dict:
     """Generate tailored resumes for high-scoring jobs.
@@ -748,21 +800,14 @@ def run_tailoring(min_score: int | None = None, limit: int = 20, workers: int = 
 
     def _flush_tailor_results(conn, results, now):
         for r in results:
-            if r["status"] == "approved":
-                # Prefer the generated DOCX/PDF path. Fall back to the text
-                # path only if conversion silently failed (e.g., missing
-                # python-docx); the apply layer will flag that as invalid.
-                stored_path = r.get("pdf_path") or r["path"]
-                conn.execute(
-                    "UPDATE jobs SET tailored_resume_path=?, tailored_at=?, "
-                    "tailor_attempts=COALESCE(tailor_attempts,0)+1 WHERE url=?",
-                    (stored_path, now, r["url"]),
-                )
-            else:
-                conn.execute(
-                    "UPDATE jobs SET tailor_attempts=COALESCE(tailor_attempts,0)+1 WHERE url=?",
-                    (r["url"],),
-                )
+            # Prefer the generated DOCX/PDF path. Fall back to the text
+            # path only if conversion silently failed (e.g., missing
+            # python-docx); the apply layer will flag that as invalid.
+            stored_path = r.get("pdf_path") or r.get("path")
+            _mark_tailor_result(
+                conn, r["url"], r["status"], stored_path,
+                attempts=r.get("attempts"), now=now,
+            )
 
     try:
         write_with_retry(conn, _flush_tailor_results, conn, results, now)

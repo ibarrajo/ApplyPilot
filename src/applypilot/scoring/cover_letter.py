@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from applypilot.config import COVER_LETTER_DIR, RESUME_PATH, load_profile
-from applypilot.database import get_connection, write_with_retry
+from applypilot.database import get_connection, transition_state, write_with_retry
 from applypilot.llm import get_client
 from applypilot.scoring.validator import (
     sanitize_text,
@@ -223,6 +223,49 @@ def _cover_one_job(job: dict, resume_text: str, profile: dict, doc_format: str =
     }
 
 
+def _mark_cover_result(
+    conn,
+    url: str,
+    path: str | None,
+    *,
+    error: str | None = None,
+    now: str | None = None,
+) -> None:
+    """Persist one cover letter result and emit a state transition.
+
+    Extracted from ``_flush_cover_results`` so tests can call it directly.
+    Transitions to ``ready_to_apply`` on success, ``cover_failed`` on failure.
+    """
+    from datetime import datetime, timezone as _tz
+
+    if now is None:
+        now = datetime.now(_tz.utc).isoformat()
+
+    if path:
+        conn.execute(
+            "UPDATE jobs SET cover_letter_path=?, cover_letter_at=?, "
+            "cover_attempts=COALESCE(cover_attempts,0)+1 WHERE url=?",
+            (path, now, url),
+        )
+        transition_state(
+            conn, url, "ready_to_apply",
+            reason="cover letter done",
+            metadata={"path": path},
+            force=True,
+        )
+    else:
+        conn.execute(
+            "UPDATE jobs SET cover_attempts=COALESCE(cover_attempts,0)+1 WHERE url=?",
+            (url,),
+        )
+        transition_state(
+            conn, url, "cover_failed",
+            reason="cover generation failed",
+            metadata={"error": error},
+            force=True,
+        )
+
+
 def run_cover_letters(min_score: int | None = None, limit: int = 20, workers: int = 1,
                       doc_format: str = "docx", max_age_days: int | None = None) -> dict:
     """Generate cover letters for high-scoring jobs that have tailored resumes.
@@ -364,20 +407,13 @@ def run_cover_letters(min_score: int | None = None, limit: int = 20, workers: in
 
     def _flush_cover_results(conn, results, now):
         for r in results:
-            if r.get("path"):
-                # Prefer the generated DOCX/PDF path; fall back to text path
-                # if conversion failed (apply layer will flag as invalid).
-                stored_path = r.get("pdf_path") or r["path"]
-                conn.execute(
-                    "UPDATE jobs SET cover_letter_path=?, cover_letter_at=?, "
-                    "cover_attempts=COALESCE(cover_attempts,0)+1 WHERE url=?",
-                    (stored_path, now, r["url"]),
-                )
-            else:
-                conn.execute(
-                    "UPDATE jobs SET cover_attempts=COALESCE(cover_attempts,0)+1 WHERE url=?",
-                    (r["url"],),
-                )
+            # Prefer the generated DOCX/PDF path; fall back to text path
+            # if conversion failed (apply layer will flag as invalid).
+            stored_path = r.get("pdf_path") or r.get("path")
+            _mark_cover_result(
+                conn, r["url"], stored_path,
+                error=r.get("error"), now=now,
+            )
 
     try:
         write_with_retry(conn, _flush_cover_results, conn, results, now)
