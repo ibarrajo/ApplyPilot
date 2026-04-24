@@ -779,28 +779,37 @@ def _start_worker_listener(worker_id: int) -> int:
                 self.wfile.write(b"url and action required")
                 return
             try:
+                from applypilot.database import transition_state as _ts
                 conn = get_connection()
                 now = datetime.now(tz.utc).isoformat()
                 if action == "applied":
                     conn.execute("""UPDATE jobs SET apply_status='applied', applied_at=?,
                         apply_category='applied', apply_attempts=COALESCE(apply_attempts,0)+1
                         WHERE url=?""", (now, url))
+                    _ts(conn, url, "applied",
+                        reason="HTTP handler mark", force=True)
                 elif action == "skip":
                     conn.execute("""UPDATE jobs SET apply_status='failed',
                         apply_category='archived_ineligible',
                         apply_error='manually skipped', apply_attempts=99 WHERE url=?""", (url,))
+                    _ts(conn, url, "manual_only",
+                        reason="HTTP handler skip", force=True)
                 elif action == "error":
                     conn.execute("""UPDATE jobs SET apply_status='failed',
                         apply_category='archived_platform',
                         apply_error='manually marked error', apply_attempts=99 WHERE url=?""", (url,))
+                    _ts(conn, url, "apply_failed",
+                        reason="HTTP handler error", force=True)
                 elif action == "reset":
                     conn.execute("""UPDATE jobs SET apply_status=NULL, apply_category='pending',
                         apply_error=NULL, apply_attempts=0, agent_id=NULL WHERE url=?""", (url,))
+                    _ts(conn, url, "ready_to_apply",
+                        reason="HTTP handler reset", force=True)
                 conn.commit()
                 logger.info("[W%d] Manual mark '%s': %s", worker_id, action, url[:70])
                 self._json_ok({"status": "ok", "action": action})
             except Exception as e:
-                logger.debug("jobs_mark error: %s", e)
+                logger.error("HTTP _handle_jobs_mark failed for %s: %s", url, e, exc_info=True)
                 self.send_response(500)
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
@@ -1396,6 +1405,18 @@ def mark_job(url: str, status: str, reason: str | None = None) -> None:
                            apply_category = ?
             WHERE url = ?
         """, (error, category, url))
+    from applypilot.database import transition_state as _ts
+    state_map = {
+        "applied":      "applied",
+        "failed":       "apply_failed",
+        "manual":       "manual_only",
+        "needs_human":  "needs_human",
+    }
+    target = state_map.get(status)
+    if target:
+        _ts(conn, url, target,
+            reason=f"manually marked {status} via CLI",
+            force=True)
     _db_retry_commit(conn)
 
 
@@ -1406,6 +1427,16 @@ def reset_failed() -> int:
         Number of jobs reset.
     """
     conn = get_connection()
+    # Collect URLs before the bulk UPDATE so we can emit individual transitions.
+    urls_to_reset = [
+        r[0] for r in conn.execute("""
+            SELECT url FROM jobs
+            WHERE apply_status = 'failed'
+              OR (apply_status IS NOT NULL AND apply_status != 'applied'
+                  AND apply_status != 'in_progress'
+                  AND apply_status != 'needs_human')
+        """).fetchall()
+    ]
     cursor = _db_retry_execute(conn, """
         UPDATE jobs SET apply_status = NULL, apply_error = NULL,
                        apply_attempts = 0, agent_id = NULL,
@@ -1415,6 +1446,11 @@ def reset_failed() -> int:
               AND apply_status != 'in_progress'
               AND apply_status != 'needs_human')
     """)
+    from applypilot.database import transition_state as _ts
+    for u in urls_to_reset:
+        _ts(conn, u, "ready_to_apply",
+            reason="reset_failed — re-queued",
+            force=True)
     _db_retry_commit(conn)
     return cursor.rowcount
 
@@ -1507,6 +1543,12 @@ def mark_needs_human(url: str, reason: str, stuck_url: str,
                        apply_category = 'needs_human'
         WHERE url = ?
     """, (reason, stuck_url, instructions, duration_ms, now, url))
+    from applypilot.database import transition_state as _ts
+    _ts(conn, url, "needs_human",
+        reason=(reason or "marked needs_human"),
+        metadata={"hitl_url": stuck_url,
+                  "instructions": instructions[:200] if instructions else None},
+        force=True)
     _db_retry_commit(conn)
 
 
@@ -1520,6 +1562,7 @@ def reset_needs_human(url: str | None = None) -> int:
         Number of jobs reset.
     """
     conn = get_connection()
+    from applypilot.database import transition_state as _ts
     if url:
         cursor = _db_retry_execute(conn, """
             UPDATE jobs SET apply_status = NULL,
@@ -1530,7 +1573,17 @@ def reset_needs_human(url: str | None = None) -> int:
                            apply_category = NULL
             WHERE url = ? AND apply_status = 'needs_human'
         """, (url,))
+        if cursor.rowcount:
+            _ts(conn, url, "applying",
+                reason="needs_human resolved, re-acquired",
+                force=True)
     else:
+        # Fetch URLs before updating so we can emit individual transitions.
+        urls_to_reset = [
+            r[0] for r in conn.execute(
+                "SELECT url FROM jobs WHERE apply_status = 'needs_human'"
+            ).fetchall()
+        ]
         cursor = _db_retry_execute(conn, """
             UPDATE jobs SET apply_status = NULL,
                            needs_human_reason = NULL,
@@ -1540,6 +1593,10 @@ def reset_needs_human(url: str | None = None) -> int:
                            apply_category = NULL
             WHERE apply_status = 'needs_human'
         """)
+        for u in urls_to_reset:
+            _ts(conn, u, "applying",
+                reason="needs_human resolved, re-acquired",
+                force=True)
     _db_retry_commit(conn)
     return cursor.rowcount
 
