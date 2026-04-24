@@ -29,6 +29,24 @@ log = logging.getLogger(__name__)
 
 
 SEARCH_URL = "https://www.amazon.jobs/en/search.json"
+
+# Amazon's radius filter returns global jobs that merely match the keyword —
+# we enforce Seattle-area locations client-side. WA state is automatic;
+# additional WA cities covered below.
+_SEATTLE_AREA_CITIES = {
+    "seattle", "bellevue", "redmond", "kirkland", "issaquah", "renton",
+    "bothell", "sammamish", "mercer island", "newcastle", "woodinville",
+    "bellevue/seattle", "greater seattle area",
+}
+
+
+def _in_seattle_area(city: str, state: str) -> bool:
+    """True if the job is in WA state OR one of the Seattle-area cities."""
+    state_norm = (state or "").strip().upper()
+    if state_norm in ("WA", "WASHINGTON"):
+        return True
+    city_norm = (city or "").strip().lower()
+    return city_norm in _SEATTLE_AREA_CITIES
 _HEADERS = {
     "User-Agent": "ApplyPilot/1.0 (job-discovery)",
     "Accept": "application/json",
@@ -132,6 +150,15 @@ def search_amazon_jobs(
                 continue
             url = f"https://amazon.jobs{job_path}" if job_path.startswith("/") else job_path
 
+            # Amazon's `radius` param is unreliable — it returns global jobs
+            # matching the keyword. Enforce client-side location filter
+            # using Washington-state or Seattle-area cities.
+            city = (job.get("city") or "").strip()
+            state = (job.get("state") or "").strip()
+
+            if not _in_seattle_area(city, state):
+                continue
+
             # Description: combine the short `description` + `basic_qualifications`
             # + `preferred_qualifications` if available.
             desc_parts = []
@@ -141,8 +168,6 @@ def search_amazon_jobs(
                     desc_parts.append(_strip_html(v))
             description = "\n\n".join(desc_parts)
 
-            city = (job.get("city") or "").strip()
-            state = (job.get("state") or "").strip()
             location_str = ", ".join(p for p in (city, state) if p) or location
 
             jobs.append({

@@ -1,0 +1,515 @@
+# Seattle-area mega-corps & major employers (v3) — researched 2026-04-23.
+#
+# PURPOSE: Fills the systematic gap in v1+v2, which used startup-focused
+# directories (Built In Seattle, VC portfolios, AngelList/Wellfound) and
+# therefore systematically excluded household-name employers.
+#
+# Sources used for this list:
+#   psbj        = Puget Sound Business Journal "Largest Employers" list
+#   geekwire    = GeekWire "Top 100" companies
+#   wa-commerce = Washington State Dept of Commerce major employers
+#   wikipedia   = Wikipedia "Companies based in Seattle" category
+#   direct-web  = Known public information / company careers pages
+#   linkedin    = LinkedIn company directory (1000+ employees, Seattle area)
+#
+# All companies have physical offices within ~30 min of Lower Queen Anne (98119)
+# by motorcycle, covering: Seattle, Bellevue, Redmond, Kirkland, SLU, Fremont,
+# Ballard, Belltown, Issaquah, SeaTac, Renton, and nearby suburbs.
+#
+# Tier definitions (consistent with v1/v2):
+#   1 = strong eng culture, interesting distributed-systems / AI-infra problems
+#   2 = solid scale-up or established company, good stack
+#   3 = large employer, mixed culture, worth applying anyway
+#
+# NOTE: Google and Meta are listed in v1 comments / v2 dedup list but never
+# got full entries. They are included here with complete records.
+
+diagnosis: |
+  Three compounding biases caused v1+v2 to miss every household-name employer
+  with a Seattle-area presence.
+
+  SOURCE BIAS: Every research source was a startup-focused directory. Built In
+  Seattle, AngelList/Wellfound, and the four VC portfolios (Madrona, PSL,
+  Voyager, Flying Fish) are explicitly curated for venture-backed startups.
+  Amazon doesn't list on Wellfound. Microsoft doesn't appear in Madrona's
+  portfolio. Household names are systematically absent from these directories
+  because they recruit through their own career portals, LinkedIn, and employee
+  referrals — not startup job boards.
+
+  INSTRUCTION BIAS (TIER FRAMING): The prompt used Temporal, Pulumi, Snowflake,
+  and Databricks as "Tier 1 ideal" examples — all developer-tools scale-ups. The
+  tier system implicitly ranked company size as a negative signal: "mixed
+  culture" and "big-co" were used as Tier 3 descriptors, which the research
+  agent correctly interpreted as low-priority. Amazon was mentioned as "(mixed)"
+  in passing; Microsoft as "(big-co culture)." These parentheticals signaled
+  "deprioritize" even if that wasn't the explicit intent.
+
+  SENIORITY FILTER MISMATCH: The framing of "senior/staff backend" and
+  "interesting distributed-systems problems" aligns better with Series B-D
+  companies where a single engineer has outsized impact. Mega-corps post
+  hundreds of senior roles across dozens of teams — many solving genuinely hard
+  distributed-systems problems (AWS, Azure, Google Cloud, Stripe) — but the
+  filter's cultural framing excluded them implicitly.
+
+  IMPLICIT CULTURAL FILTER: The emphasis on "interesting engineering problems"
+  and "strong eng culture" as prerequisites for inclusion created a bias toward
+  companies with visible technical brands (Stripe, Databricks) and against
+  those with consumer/retail brands (Amazon, Nordstrom, Costco). This conflated
+  brand identity with engineering quality — a false equivalence, since Amazon
+  SDE teams build some of the world's most complex distributed systems.
+
+companies:
+
+  # ════════════════════════════════════════════════════════
+  # BIG TECH — Seattle/Eastside flagship offices
+  # ════════════════════════════════════════════════════════
+
+  - name: "Amazon"
+    neighborhood: "Downtown Seattle / South Lake Union / Denny Triangle"
+    domain: "cloud | consumer | devices | advertising | logistics"
+    size: "large (5000+)"
+    careers_url: "https://www.amazon.jobs"
+    ats: "custom"
+    blurb: "World HQ: 60,000+ employees in 50+ downtown Seattle buildings; AWS, Advertising, Alexa, Fulfillment, and Prime Video all have large SDE orgs here."
+    headcount_wa: 65000
+    hiring_volume: "massive"
+    tier: 2
+    why_alex_cares: "Scale of distributed systems problems is unmatched globally; AWS, Advertising, and Alexa all have senior backend roles constantly open."
+    source: "psbj | wa-commerce"
+
+  - name: "Microsoft"
+    neighborhood: "Redmond (main campus) + Bellevue"
+    domain: "cloud | developer-tools | gaming | devices | ai"
+    size: "large (5000+)"
+    careers_url: "https://careers.microsoft.com"
+    ats: "custom"
+    blurb: "Global HQ in Redmond; 50,000+ WA employees across Azure, GitHub, Teams, Xbox, and Surface; Azure alone has hundreds of senior backend openings."
+    headcount_wa: 55000
+    hiring_volume: "massive"
+    tier: 2
+    why_alex_cares: "Azure distributed systems, GitHub, and the developer-tools orgs offer senior backend problems at hyperscale."
+    source: "psbj | wa-commerce"
+
+  - name: "Google (Seattle / Kirkland)"
+    neighborhood: "Fremont (Gasworks area) + Kirkland"
+    domain: "cloud | ai | advertising | developer-tools"
+    size: "large (5000+)"
+    careers_url: "https://careers.google.com"
+    ats: "custom"
+    blurb: "Two large campuses: Fremont on the ship canal and Kirkland (Google's 2nd-largest US office); 7,000+ WA employees in Search, Cloud, YouTube, and Android."
+    headcount_wa: 7000
+    hiring_volume: "large"
+    tier: 2
+    why_alex_cares: "Google Cloud and Android Automotive infra teams in Kirkland work on genuinely hard distributed-systems problems."
+    source: "geekwire | wikipedia"
+
+  - name: "Meta (Seattle / Bellevue)"
+    neighborhood: "Bellevue + South Lake Union"
+    domain: "social | vr | ai | advertising"
+    size: "large (5000+)"
+    careers_url: "https://www.metacareers.com"
+    ats: "custom"
+    blurb: "Reality Labs headset/AI hardware team in Redmond; large Bellevue office for Messenger, Instagram, and WhatsApp infra; ~5,000 WA employees."
+    headcount_wa: 5000
+    hiring_volume: "large"
+    tier: 2
+    why_alex_cares: "Reality Labs and Instagram backend infra teams run large-scale distributed data pipelines."
+    source: "geekwire | direct-web"
+
+  - name: "Apple (Seattle Engineering)"
+    neighborhood: "South Lake Union / Westlake"
+    domain: "ai | maps | devices | developer-tools"
+    size: "large (5000+)"
+    careers_url: "https://jobs.apple.com"
+    ats: "custom"
+    blurb: "Apple Maps, Siri, and machine-learning teams have a major Seattle engineering hub (1000+ engineers); quiet about location but well-documented on LinkedIn."
+    headcount_wa: 2000
+    hiring_volume: "moderate"
+    tier: 2
+    why_alex_cares: "Maps + Siri data pipeline and on-device ML infra roles are senior backend problems at Apple scale."
+    source: "linkedin | direct-web"
+
+  # ════════════════════════════════════════════════════════
+  # CLOUD / PAYMENTS / INFRA — large Seattle offices
+  # ════════════════════════════════════════════════════════
+
+  - name: "Twilio"
+    neighborhood: "South Lake Union"
+    domain: "developer-tools | communications"
+    size: "large (5000+)"
+    careers_url: "https://www.twilio.com/en-us/company/jobs"
+    ats: "greenhouse"
+    blurb: "Communications-as-a-service platform (SMS, voice, email, video); large SLU office; 8,000+ employees globally; Segment and SendGrid are Twilio subsidiaries."
+    headcount_wa: 800
+    hiring_volume: "moderate"
+    tier: 2
+    why_alex_cares: "Real-time messaging infrastructure, Segment CDP data pipelines, and Flex contact-center backend are senior backend problems."
+    source: "geekwire | builtin"
+
+  - name: "Tableau (Salesforce)"
+    neighborhood: "Fremont"
+    domain: "saas-b2b | data-analytics"
+    size: "large (5000+)"
+    careers_url: "https://careers.salesforce.com"
+    ats: "workday"
+    blurb: "Visual analytics platform (acquired by Salesforce 2019); original Tableau HQ remains in Fremont at 1621 N 34th St; ~1,500 local engineers."
+    headcount_wa: 1500
+    hiring_volume: "moderate"
+    tier: 2
+    why_alex_cares: "Tableau's VizQL engine and Hyper in-memory analytics database are legitimately interesting distributed-query problems."
+    source: "geekwire | wikipedia"
+
+  - name: "ServiceNow (Kirkland)"
+    neighborhood: "Kirkland"
+    domain: "saas-b2b | enterprise"
+    size: "large (5000+)"
+    careers_url: "https://careers.servicenow.com"
+    ats: "workday"
+    blurb: "Enterprise workflow platform ($17B revenue, 25,000 employees); large Kirkland engineering office focused on AI platform and Now Assist."
+    headcount_wa: 1200
+    hiring_volume: "large"
+    tier: 2
+    why_alex_cares: "AI platform and workflow-engine backend teams in Kirkland do serious distributed systems work at enterprise scale."
+    source: "linkedin | direct-web"
+
+  # ════════════════════════════════════════════════════════
+  # SEATTLE-BASED CONSUMER / RETAIL COMPANIES WITH TECH TEAMS
+  # ════════════════════════════════════════════════════════
+
+  - name: "Starbucks (Tech)"
+    neighborhood: "SoDo / Seattle HQ"
+    domain: "consumer | retail-tech | loyalty"
+    size: "large (5000+)"
+    careers_url: "https://www.starbucks.com/careers/"
+    ats: "workday"
+    blurb: "Global coffee company with world HQ in SoDo; ~3,000 tech employees in Seattle working on the Starbucks app (50M+ loyalty members), digital ordering, and supply-chain systems."
+    headcount_wa: 5000
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "Loyalty platform and real-time ordering backend serve 50M+ active users — genuinely large-scale distributed systems for a retail brand."
+    source: "psbj | wa-commerce"
+
+  - name: "Costco (Tech)"
+    neighborhood: "Issaquah HQ"
+    domain: "consumer | retail-tech | ecommerce"
+    size: "large (5000+)"
+    careers_url: "https://www.costco.com/jobs.html"
+    ats: "custom"
+    blurb: "Global membership retail chain with world HQ in Issaquah; tech team (200+ engineers) builds ecommerce, supply-chain, and warehouse-management systems."
+    headcount_wa: 18000
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "eCommerce platform at Costco scale (13M+ online orders/month) uses serious distributed backend architecture."
+    source: "psbj | wa-commerce"
+
+  - name: "Nordstrom (Tech)"
+    neighborhood: "Downtown Seattle HQ"
+    domain: "consumer | retail-tech | ecommerce"
+    size: "large (5000+)"
+    careers_url: "https://careers.nordstrom.com/"
+    ats: "workday"
+    blurb: "Fashion retailer with HQ at 5th & Pine in downtown Seattle; ~1,200 tech employees building ecommerce, inventory management, and personalization platforms."
+    headcount_wa: 6000
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "Nordstrom Tech runs a sophisticated unified-commerce platform (buy online, return in store) with genuinely hard inventory and personalization problems."
+    source: "psbj | wikipedia"
+
+  - name: "REI (Tech)"
+    neighborhood: "Bellevue HQ (Spring District)"
+    domain: "consumer | retail-tech | ecommerce"
+    size: "large (5000+)"
+    careers_url: "https://www.rei.com/careers"
+    ats: "workday"
+    blurb: "Outdoor retail co-op with engineering HQ in Bellevue's Spring District; ~400 tech employees building ecommerce, mobile, and supply-chain systems."
+    headcount_wa: 1500
+    hiring_volume: "low-moderate"
+    tier: 3
+    why_alex_cares: "REI's ecommerce replatform and real-time inventory systems are senior backend work in a mission-driven org."
+    source: "psbj | direct-web"
+
+  - name: "T-Mobile"
+    neighborhood: "Bellevue HQ (Crossroads area)"
+    domain: "telecom | developer-tools | consumer"
+    size: "large (5000+)"
+    careers_url: "https://careers.t-mobile.com/"
+    ats: "workday"
+    blurb: "US telecom HQ in Bellevue; 15,000 WA employees; DevX, data engineering, and 5G platform teams have active senior SWE hiring."
+    headcount_wa: 15000
+    hiring_volume: "large"
+    tier: 3
+    why_alex_cares: "5G network API platform and developer-tools org (T-Mobile for Developers) are modern distributed-systems work at carrier scale."
+    source: "psbj | wa-commerce"
+
+  # ════════════════════════════════════════════════════════
+  # ESTABLISHED TECH — large Seattle presences
+  # ════════════════════════════════════════════════════════
+
+  - name: "HP / HP Inc (Seattle)"
+    neighborhood: "South Lake Union"
+    domain: "developer-tools | devices | printing"
+    size: "large (5000+)"
+    careers_url: "https://jobs.hp.com"
+    ats: "workday"
+    blurb: "HP Inc (PC + printing side of the split) has a software engineering office in SLU focused on cloud print services, device management, and security firmware."
+    headcount_wa: 600
+    hiring_volume: "low-moderate"
+    tier: 3
+    why_alex_cares: "HP's cloud print + Instant Ink backend is a real distributed-services problem, though less interesting than pure software companies."
+    source: "linkedin | direct-web"
+
+  - name: "Dell Technologies (Seattle)"
+    neighborhood: "Bellevue / Redmond"
+    domain: "cloud | developer-tools | enterprise"
+    size: "large (5000+)"
+    careers_url: "https://jobs.dell.com"
+    ats: "workday"
+    blurb: "Dell has a significant Bellevue/Redmond engineering presence (~600 engineers) focused on VMware Cloud (Broadcom-merged) and Dell APEX cloud-native services."
+    headcount_wa: 600
+    hiring_volume: "low-moderate"
+    tier: 3
+    why_alex_cares: "Dell APEX and former VMware Cloud Foundation teams work on multi-cloud infrastructure orchestration at enterprise scale."
+    source: "linkedin | direct-web"
+
+  - name: "Pinterest (Seattle)"
+    neighborhood: "South Lake Union"
+    domain: "consumer | ai | advertising"
+    size: "large (5000+)"
+    careers_url: "https://www.pinterestcareers.com"
+    ats: "greenhouse"
+    blurb: "Visual discovery and social shopping platform; Seattle engineering office (~200 engineers) focused on recommendations, ads backend, and ML infra."
+    headcount_wa: 200
+    hiring_volume: "low-moderate"
+    tier: 2
+    why_alex_cares: "Pinterest's recommendation and visual search backend solves large-scale ML-serving and distributed-data problems."
+    source: "geekwire | direct-web"
+
+  - name: "Airbnb (Seattle)"
+    neighborhood: "South Lake Union"
+    domain: "consumer | marketplace | payments"
+    size: "large (5000+)"
+    careers_url: "https://careers.airbnb.com"
+    ats: "greenhouse"
+    blurb: "Home-sharing marketplace; Seattle office (~200 engineers) works on trust & safety, payments, and search-ranking infrastructure."
+    headcount_wa: 200
+    hiring_volume: "low-moderate"
+    tier: 2
+    why_alex_cares: "Airbnb's payments and trust infrastructure are senior backend problems in a marketplace at global scale."
+    source: "linkedin | direct-web"
+
+  # ════════════════════════════════════════════════════════
+  # ESTABLISHED SEATTLE COMPANIES — non-consumer tech
+  # ════════════════════════════════════════════════════════
+
+  - name: "Alaska Airlines (Tech)"
+    neighborhood: "SeaTac HQ"
+    domain: "travel | retail-tech | logistics"
+    size: "large (5000+)"
+    careers_url: "https://careers.alaskaair.com/"
+    ats: "workday"
+    blurb: "US airline HQ at SeaTac; ~500 tech employees building reservation systems, loyalty platform (Mileage Plan), and real-time flight operations software."
+    headcount_wa: 10000
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "Real-time flight operations and distributed reservation system backend; interesting constraints, though airline tech is legacy-heavy."
+    source: "psbj | wa-commerce"
+
+  - name: "Boeing (Software)"
+    neighborhood: "Renton + Everett + Seattle"
+    domain: "aerospace | defense | embedded"
+    size: "large (5000+)"
+    careers_url: "https://jobs.boeing.com"
+    ats: "workday"
+    blurb: "Aerospace manufacturer with Renton (737 line) and Everett (777/787) plants; software engineering teams build flight-management, simulation, and MES systems; 60,000+ WA employees."
+    headcount_wa: 60000
+    hiring_volume: "large"
+    tier: 3
+    why_alex_cares: "Boeing Digital Aviation Solutions and the Tapestry digital-thread platform do legitimate distributed-systems work, though pace is slow."
+    source: "psbj | wa-commerce"
+
+  - name: "PACCAR (Tech)"
+    neighborhood: "Bellevue HQ"
+    domain: "automotive | iot | embedded"
+    size: "large (5000+)"
+    careers_url: "https://www.paccar.com/careers/"
+    ats: "workday"
+    blurb: "Kenworth/DAF/Peterbilt trucking manufacturer with Bellevue HQ; technology team builds connected-truck telematics, OTA firmware, and fleet-analytics platforms."
+    headcount_wa: 4000
+    hiring_volume: "low-moderate"
+    tier: 3
+    why_alex_cares: "PACCAR's connected-truck IoT platform and fleet data pipelines are interesting embedded-plus-cloud engineering problems."
+    source: "psbj | wikipedia"
+
+  - name: "Weyerhaeuser (IT)"
+    neighborhood: "Seattle HQ (Federal Way)"
+    domain: "forestry | iot"
+    size: "large (5000+)"
+    careers_url: "https://www.weyerhaeuser.com/company/careers/"
+    ats: "workday"
+    blurb: "Timber and land company with Seattle-area HQ; small IT/data-engineering team; listed for completeness per user request — minimal software engineering opportunity."
+    headcount_wa: 2500
+    hiring_volume: "low"
+    tier: 3
+    why_alex_cares: "Minimal software engineering opportunity; apply only if inventory/supply-chain systems are of interest."
+    source: "psbj | wikipedia"
+
+  # ════════════════════════════════════════════════════════
+  # ADDITIONAL MAJOR EMPLOYERS NOT IN V1/V2
+  # ════════════════════════════════════════════════════════
+
+  - name: "Snap Inc (Seattle)"
+    neighborhood: "South Lake Union"
+    domain: "consumer | ar | advertising"
+    size: "large (5000+)"
+    careers_url: "https://careers.snap.com"
+    ats: "greenhouse"
+    blurb: "Snapchat and Spectacles maker; Seattle engineering office (~250 engineers) working on Lens Studio AR platform, ad-tech backend, and ML infrastructure."
+    headcount_wa: 250
+    hiring_volume: "moderate"
+    tier: 2
+    why_alex_cares: "Snap's AR compute platform and real-time ML-serving infrastructure are genuinely cutting-edge distributed-systems problems."
+    source: "linkedin | geekwire"
+
+  - name: "Salesforce (Bellevue tower)"
+    neighborhood: "Bellevue (2+2 campus)"
+    domain: "saas-b2b | crm"
+    size: "large (5000+)"
+    careers_url: "https://careers.salesforce.com"
+    ats: "workday"
+    blurb: "CRM platform giant; large Bellevue engineering office (separate from Tableau/Fremont); Einstein AI platform and MuleSoft integration teams are here."
+    headcount_wa: 3000
+    hiring_volume: "large"
+    tier: 3
+    why_alex_cares: "Einstein AI platform and MuleSoft integration-engine teams tackle large-scale data-pipeline problems."
+    source: "linkedin | direct-web"
+
+  - name: "Oracle (Bellevue)"
+    neighborhood: "Bellevue / Redmond"
+    domain: "cloud | saas-b2b | database"
+    size: "large (5000+)"
+    careers_url: "https://www.oracle.com/careers/"
+    ats: "taleo"
+    blurb: "Enterprise database + cloud platform; 1,000+ WA engineers across OCI, MySQL HeatWave, and NetSuite teams in Bellevue/Redmond area."
+    headcount_wa: 1200
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "OCI and MySQL HeatWave teams work on distributed database and cloud-infra problems, though Oracle culture is famously slow-moving."
+    source: "linkedin | direct-web"
+
+  - name: "SAP (Seattle)"
+    neighborhood: "Downtown Seattle / Bellevue"
+    domain: "saas-b2b | enterprise | erp"
+    size: "large (5000+)"
+    careers_url: "https://jobs.sap.com"
+    ats: "custom"
+    blurb: "Enterprise ERP and analytics giant; SAP Concur is headquartered in Bellevue (travel & expense SaaS); ~2,000 WA engineers in Concur + SAP BTP teams."
+    headcount_wa: 2000
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "SAP Concur runs one of the world's largest T&E data pipelines; interesting scale despite legacy-heavy culture."
+    source: "psbj | wa-commerce"
+
+  - name: "Accenture / Avanade (Seattle)"
+    neighborhood: "Downtown Seattle"
+    domain: "consulting | cloud | enterprise"
+    size: "large (5000+)"
+    careers_url: "https://www.accenture.com/us-en/careers"
+    ats: "workday"
+    blurb: "Avanade (Accenture + Microsoft JV) has its global HQ in downtown Seattle at 1191 2nd Ave; ~1,500 local engineers building on Azure/M365."
+    headcount_wa: 2000
+    hiring_volume: "large"
+    tier: 3
+    why_alex_cares: "Avanade's global HQ is here and they are always hiring senior engineers for Azure-native solutions — consulting work, but good comp."
+    source: "wikipedia | direct-web"
+
+  - name: "Convoy (acquired by Uber Freight)"
+    neighborhood: "South Lake Union"
+    domain: "logistics | marketplace"
+    size: "mid (500-5000)"
+    careers_url: "https://www.uberfreight.com/careers/"
+    ats: "greenhouse"
+    blurb: "Digital freight marketplace acquired by Uber Freight in 2023; Seattle office continues operating under Uber Freight brand; load-matching + routing algorithms at scale."
+    headcount_wa: 400
+    hiring_volume: "low-moderate"
+    tier: 2
+    why_alex_cares: "Real-time freight matching and dynamic pricing backend at Uber Freight scale — distributed-systems problems with direct marketplace experience relevance."
+    source: "geekwire | direct-web"
+
+  - name: "Limeade (WebMD Health Services)"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b | healthtech"
+    size: "mid (500-5000)"
+    careers_url: "https://www.webmdhealthservices.com/careers/"
+    ats: "workday"
+    blurb: "Employee wellbeing SaaS platform (acquired by WebMD Health Services); Bellevue HQ; engagement + analytics platform."
+    headcount_wa: 300
+    hiring_volume: "low"
+    tier: 3
+    why_alex_cares: "Listed for completeness; limited senior distributed-systems opportunity."
+    source: "psbj"
+
+  - name: "Halo (Peraton / Raytheon)"
+    neighborhood: "Redmond"
+    domain: "defense | cloud"
+    size: "large (5000+)"
+    careers_url: "https://www.raytheon.com/careers"
+    ats: "workday"
+    blurb: "Raytheon Intelligence & Space has a significant Redmond facility working on cloud-based intelligence analysis systems and C2 software."
+    headcount_wa: 800
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "Defense cloud systems work; clearance may be required for senior roles."
+    source: "wa-commerce | direct-web"
+
+  - name: "Schweitzer Engineering Laboratories (SEL)"
+    neighborhood: "Pullman / Redmond office"
+    domain: "iot | embedded | energy"
+    size: "mid (500-5000)"
+    careers_url: "https://selinc.com/careers/"
+    ats: "custom"
+    blurb: "Power systems protection and automation (privately-held; Pullman WA HQ with Redmond engineering office); embedded C + distributed SCADA systems for grid infrastructure."
+    headcount_wa: 1200
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "SEL's real-time grid protection software is niche but technically interesting; Redmond office is 30+ min from LQA."
+    source: "wa-commerce | direct-web"
+
+  - name: "Tyler Technologies (Seattle)"
+    neighborhood: "Redmond"
+    domain: "govtech | saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://www.tylertech.com/careers"
+    ats: "workday"
+    blurb: "Largest US government software company; acquired New World (public safety dispatch) which has a Redmond presence; courts + public safety SaaS backend."
+    headcount_wa: 400
+    hiring_volume: "moderate"
+    tier: 3
+    why_alex_cares: "GovTech SaaS at scale; not the most exciting domain but stable and well-compensated."
+    source: "direct-web"
+
+  - name: "Wayfair (Seattle)"
+    neighborhood: "South Lake Union / Bellevue"
+    domain: "consumer | ecommerce | logistics"
+    size: "large (5000+)"
+    careers_url: "https://www.wayfair.com/careers/"
+    ats: "workday"
+    blurb: "Online furniture/home goods retailer; small Seattle engineering satellite (~100 engineers) focused on supply-chain and logistics optimization. WA presence is limited — verify before applying."
+    headcount_wa: 100
+    hiring_volume: "low"
+    tier: 3
+    why_alex_cares: "Wayfair's logistics optimization and 3D product visualization backend are interesting, but most eng is in Boston."
+    source: "linkedin"
+
+  - name: "Stripe (note: already in v2)"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "large (5000+)"
+    careers_url: "https://stripe.com/jobs"
+    ats: "lever"
+    blurb: "ALREADY IN V2 — included here to confirm it is covered. See v2 entry."
+    headcount_wa: 600
+    hiring_volume: "moderate"
+    tier: 1
+    why_alex_cares: "Payments infrastructure at global scale; already captured in v2."
+    source: "builtin"
+    skip: true  # de-dup — already in v2
