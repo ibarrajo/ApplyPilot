@@ -1,0 +1,1038 @@
+# Seattle-area employers (v2) — researched 2026-04-23.
+#
+# NET-NEW companies only. De-duplicated against v1 (do not repeat v1 entries).
+# v1 companies: Temporal, Pulumi, Chainguard, MotherDuck, Anduril, Statsig,
+#   Carbon Robotics, Qumulo, Protect AI, Bluesky, Remitly, Highspot, Outreach,
+#   Okta/Auth0, Smartsheet, Carta, OfferUp, Tanium, ExtraHop, INRIX, Hiya,
+#   Rover, DomainTools, Icertis, Avalara, Bungie, Valve, Leafly, Kymeta,
+#   Expedia Group, Zillow, F5, Salesforce/Tableau, Adobe, Google, Meta,
+#   Apptio, Nintex, SkyKick, Lululemon, EagleView.
+#
+# Sources:
+#   ai2         = AI2 Incubator portfolio (https://ai2incubator.com/companies)
+#   madrona     = Madrona Venture Group portfolio (https://madrona.com/companies/)
+#   psl         = Pioneer Square Labs portfolio (https://psl.com/companies) — all shown as acquired; low yield
+#   voyager     = Voyager Capital portfolio
+#   founderscoop= Founders' Co-op — no public portfolio page
+#   flyingfish  = Flying Fish Ventures portfolio
+#   builtin     = Built In Seattle company directory
+#   direct-web  = Direct research / company websites
+#
+# Tier 1 = strong eng culture, interesting distributed-systems or AI-infra problems.
+# Tier 2 = solid scale-up, $150k+ realistic, good enough stack.
+# Tier 3 = large co / mixed culture / stretch salary / worth a shot.
+#
+# hires_mid_level: whether the company visibly posts SWE II / mid-level roles.
+# stage: approximate funding stage as of 2026-04.
+#
+# Salary notes:
+#   Tier 1 startups (<50): typically $130-200k base
+#   Scale-ups (50-500) T1: typically $160-220k
+#   Large (5000+): $180-260k Senior / $140-170k SWE II
+
+employers:
+
+  # ════════════════════════════════════════════════════════
+  # AI2 INCUBATOR — active portfolio (non-acquired)
+  # All are Seattle/PNW AI companies backed by Allen Institute
+  # ════════════════════════════════════════════════════════
+
+  - name: "Yoodli"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://job-boards.greenhouse.io/yoodliinc"
+    ats: "greenhouse"
+    blurb: "AI communication-coaching via roleplay simulations; Senior Backend + Full-Stack open in Seattle right now."
+    tier: 1
+    hires_mid_level: false
+    source: "ai2"
+
+  - name: "WellSaid Labs"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://job-boards.greenhouse.io/wellsaidlabs"
+    ats: "greenhouse"
+    blurb: "Premium AI voice avatars for enterprise content; voice synthesis infra. No open roles as of 2026-04 — monitor."
+    tier: 1
+    hires_mid_level: false
+    source: "ai2"
+
+  - name: "Roboto AI"
+    neighborhood: "South Lake Union"
+    domain: "robotics"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://www.roboto.ai/careers"
+    ats: "custom"
+    blurb: "Analytics engine for physical-AI / robotics data; hiring Senior Backend Engineer in Seattle (Wellfound). Strong fit for distributed data infra background."
+    tier: 1
+    hires_mid_level: false
+    source: "ai2"
+
+  - name: "Ozette Technologies"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://www.ozette.com/careers/"
+    ats: "custom"
+    blurb: "AI-driven immune-system analytics platform; computationally-intensive bioinformatics backend. Minimal hiring in 2026-04."
+    tier: 2
+    hires_mid_level: false
+    source: "ai2"
+
+  - name: "Stratocloud"
+    neighborhood: "South Lake Union"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://stratocloud.ai/careers"
+    ats: "unknown"
+    blurb: "AI-first platform for just-in-time secure access and governance; IAM/zero-trust infra. Domain appears parked — possibly stealth/early."
+    tier: 2
+    hires_mid_level: unknown
+    source: "ai2"
+
+  - name: "Glacis"
+    neighborhood: "South Lake Union"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.ai2incubator.com/companies"
+    ats: "unknown"
+    blurb: "AI governance controls as independently verifiable receipts; compliance-infra startup from AI2."
+    tier: 2
+    hires_mid_level: unknown
+    source: "ai2"
+
+  - name: "Emphere"
+    neighborhood: "South Lake Union"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.ai2incubator.com/companies"
+    ats: "unknown"
+    blurb: "Container/Dockerfile security — every layer of your stack; AI2 Incubator seed stage."
+    tier: 2
+    hires_mid_level: unknown
+    source: "ai2"
+
+  - name: "Preemptive AI"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.ai2incubator.com/companies"
+    ats: "unknown"
+    blurb: "Predictive medical modeling platform; clinical AI from AI2 Incubator."
+    tier: 3
+    hires_mid_level: unknown
+    source: "ai2"
+
+  - name: "Friday Harbor"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.ai2incubator.com/companies"
+    ats: "unknown"
+    blurb: "Mortgage underwriting automation via AI; fintech from AI2 Incubator."
+    tier: 2
+    hires_mid_level: unknown
+    source: "ai2"
+
+  - name: "CalmWave"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.ai2incubator.com/companies"
+    ats: "unknown"
+    blurb: "Transparent AI for hospital operations optimization; clinical decision support backend."
+    tier: 2
+    hires_mid_level: unknown
+    source: "ai2"
+
+  # ════════════════════════════════════════════════════════
+  # MADRONA VENTURE GROUP — active portfolio
+  # ════════════════════════════════════════════════════════
+
+  - name: "Amperity"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "series-d"
+    careers_url: "https://www.amperity.com/careers"
+    ats: "custom"
+    blurb: "AI-powered Customer Data Platform for 400+ global brands; Lead SWE open in Seattle. Strong data-pipeline and ML-infra footprint."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Deepgram"
+    neighborhood: "South Lake Union (remote-first)"
+    domain: "ai-ml"
+    size: "scale-up (50-500)"
+    stage: "series-b"
+    careers_url: "https://jobs.ashbyhq.com/Deepgram"
+    ats: "ashby"
+    blurb: "Enterprise speech recognition / ASR built on specialized LMs; backend inference + active-learning platform roles (remote USA)."
+    tier: 1
+    hires_mid_level: true
+    source: "madrona"
+
+  - name: "Common Room"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://jobs.ashbyhq.com/CommonRoom"
+    ats: "ashby"
+    blurb: "Community-led growth intelligence connecting product + engagement data; ex-Microsoft/Stripe founders."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Dropzone AI"
+    neighborhood: "Downtown Seattle"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://dropzone.ai/careers"
+    ats: "custom"
+    blurb: "LLM-powered SOC agent that autonomously triages security alerts; Madrona-backed. No current openings as of 2026-04 — monitor."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "DevZero"
+    neighborhood: "South Lake Union"
+    domain: "developer-tools"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://jobs.ashbyhq.com/devzero"
+    ats: "ashby"
+    blurb: "Cloud dev environment platform replacing local machines; ex-Databricks/Twitter engineers; Madrona-backed."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Impart Security"
+    neighborhood: "South Lake Union"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://jobs.ashbyhq.com/impart-security"
+    ats: "ashby"
+    blurb: "Autonomous AI security platform for APIs and web apps in production; Madrona-backed."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Groundlight AI"
+    neighborhood: "Fremont"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://www.groundlight.ai/careers"
+    ats: "custom"
+    blurb: "Computer vision platform for business automation and robotics — 'natural language to visual detector'; not actively posting but always interested in full-stack engineers."
+    tier: 1
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Echodyne"
+    neighborhood: "Kirkland"
+    domain: "robotics"
+    size: "startup (<50)"
+    stage: "series-c+"
+    careers_url: "https://job-boards.greenhouse.io/echodyne"
+    ats: "greenhouse"
+    blurb: "Advanced metamaterial radar for autonomous vehicles and security; Principal SWE Embedded + DevSecOps roles in Kirkland. Hardware-software stack, aerospace adjacent."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Esper"
+    neighborhood: "Bellevue"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    stage: "series-c+"
+    careers_url: "https://esper.io/careers"
+    ats: "unknown"
+    blurb: "Android DevOps SaaS platform for enterprise device fleets (IoT/kiosks/retail); Madrona-backed."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Clarify CRM"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://jobs.ashbyhq.com/Clarify"
+    ats: "ashby"
+    blurb: "Autonomous CRM that eliminates manual data entry for sales teams; Madrona-backed."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "iSpot.tv"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "series-d"
+    careers_url: "https://www.ispot.tv/about/careers/listings"
+    ats: "custom"
+    blurb: "TV/streaming ad measurement and attribution platform; SWE I/II + Sr. SDE + Principal SRE open in Bellevue. Good mid-level pipeline."
+    tier: 2
+    hires_mid_level: true
+    source: "madrona"
+
+  - name: "Cohesity"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    stage: "series-f"
+    careers_url: "https://www.cohesity.com/careers/open-positions/"
+    ats: "unknown"
+    blurb: "AI-powered data security + management across on-prem and cloud; distributed storage and backup infra. Large Bellevue engineering office."
+    tier: 2
+    hires_mid_level: true
+    source: "madrona"
+
+  - name: "Flexe"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "series-c+"
+    careers_url: "https://flexe.com/careers"
+    ats: "unknown"
+    blurb: "On-demand fulfillment + warehousing logistics platform; Madrona portfolio, SLU roots."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "A-Alpha Bio"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://www.a-alphabio.com/careers"
+    ats: "unknown"
+    blurb: "Synthetic biology + ML for protein-protein interactions; SLU biotech adjacent to Fred Hutch cluster. Madrona-backed."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Terray Therapeutics"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://terray.com/careers"
+    ats: "unknown"
+    blurb: "AI-driven small-molecule drug discovery; computationally-intensive ML infra for drug design."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  # ════════════════════════════════════════════════════════
+  # FLYING FISH VENTURES — active portfolio
+  # ════════════════════════════════════════════════════════
+
+  - name: "Phaidra"
+    neighborhood: "Remote-first (Seattle presence)"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://www.phaidra.ai/careers"
+    ats: "unknown"
+    blurb: "AI/ML for large-scale industrial performance optimization (data centers, HVAC, energy); reinforcement learning applied to physical systems."
+    tier: 1
+    hires_mid_level: false
+    source: "flyingfish"
+
+  - name: "Orbital Materials"
+    neighborhood: "Remote-first (PNW)"
+    domain: "climate"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://orbitalmaterials.com/careers"
+    ats: "unknown"
+    blurb: "Generative AI for carbon-removal and energy-transition materials discovery; deep-tech climate."
+    tier: 2
+    hires_mid_level: false
+    source: "flyingfish"
+
+  - name: "Aisy"
+    neighborhood: "Remote-first (PNW)"
+    domain: "security"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.aisy.ai/careers"
+    ats: "unknown"
+    blurb: "AI-native threat-model intelligence — turns vulnerability data into attacker-priority queues; Flying Fish portfolio."
+    tier: 2
+    hires_mid_level: false
+    source: "flyingfish"
+
+  - name: "Artificial Agency"
+    neighborhood: "Remote-first (PNW/Vancouver)"
+    domain: "gaming"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://www.artificialagency.ai/careers"
+    ats: "unknown"
+    blurb: "Generative AI for game character behavior; AI-driven NPC engine. Flying Fish portfolio."
+    tier: 2
+    hires_mid_level: false
+    source: "flyingfish"
+
+  # ════════════════════════════════════════════════════════
+  # BUILT IN SEATTLE — scale-up / mid / large hires
+  # ════════════════════════════════════════════════════════
+
+  - name: "Axon"
+    neighborhood: "Downtown Seattle (1100 Olive Way)"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://www.axon.com/careers/all"
+    ats: "greenhouse"
+    blurb: "Public-safety tech (body cameras, tasers, cloud evidence platform); Seattle Tech Hub does cloud / data-platform work. Greenhouse ATS confirmed."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Adaptive Biotechnologies"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "scale-up (50-500)"
+    stage: "public"
+    careers_url: "https://www.adaptivebiotech.com/careers"
+    ats: "unknown"
+    blurb: "Immune-system analytics (T-cell/B-cell sequencing); computational biology + data-platform engineering in SLU."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Rubrik"
+    neighborhood: "Bellevue"
+    domain: "security"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://www.rubrik.com/company/careers"
+    ats: "unknown"
+    blurb: "AI-powered data security and cloud backup; large Bellevue engineering office; public since 2024."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Databricks"
+    neighborhood: "South Lake Union"
+    domain: "developer-tools"
+    size: "large (5000+)"
+    stage: "series-i"
+    careers_url: "https://www.databricks.com/company/careers"
+    ats: "greenhouse"
+    blurb: "Unified data+AI platform (Spark/Delta Lake); massive Seattle engineering presence; $10B+ valuation. Top-tier distributed-systems problems."
+    tier: 1
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "CoreWeave"
+    neighborhood: "Bellevue"
+    domain: "ai-ml"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://coreweave.com/careers"
+    ats: "custom"
+    blurb: "GPU cloud infrastructure provider (public 2025); SWE II posted in Seattle (Built In). Kubernetes + cloud-native infra at scale."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Trupanion"
+    neighborhood: "Capitol Hill"
+    domain: "fintech"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://trupanion.com/careers"
+    ats: "unknown"
+    blurb: "Pet insurance SaaS (public, NASDAQ: TRUP); HQ on Capitol Hill; actuarial + payments backend. $120-150k range — mid-level acceptable if interesting tech."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Supio"
+    neighborhood: "Downtown Seattle"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://jobs.gem.com/supio"
+    ats: "custom"
+    blurb: "Generative AI for legal-case analysis (personal injury / mass-tort law firms); fast-growing, 130+ employees already."
+    tier: 2
+    hires_mid_level: false
+    source: "builtin"
+
+  - name: "Hyperproof"
+    neighborhood: "Downtown Seattle"
+    domain: "security"
+    size: "scale-up (50-500)"
+    stage: "series-b"
+    careers_url: "https://hyperproof.io/working-at-hyperproof/"
+    ats: "unknown"
+    blurb: "Compliance operations platform (SOC2, ISO, FedRAMP automation); remote-friendly with Seattle office at 600 1st Ave."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "WatchGuard Technologies"
+    neighborhood: "South Lake Union"
+    domain: "security"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://www.watchguard.com/wgrd-about/careers"
+    ats: "unknown"
+    blurb: "Unified Security Platform for 17,000+ MSP customers; SLU HQ; network security + zero-trust infra."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Stackline"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://job-boards.greenhouse.io/stackline"
+    ats: "greenhouse"
+    blurb: "Retail ecommerce analytics + intelligence platform; Greenhouse ATS; engineering mostly senior — data scientist open in Seattle."
+    tier: 3
+    hires_mid_level: false
+    source: "builtin"
+
+  - name: "Gravity Payments"
+    neighborhood: "Fremont"
+    domain: "fintech"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://gravitypayments.com/careers/"
+    ats: "unknown"
+    blurb: "Merchant payments processor (famous $70k minimum wage co.); Fremont HQ; payments + fintech backend. Comp floor may be under $150k target."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Rokt"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "series-d"
+    careers_url: "https://rokt.com/careers/"
+    ats: "unknown"
+    blurb: "eCommerce transaction moment platform — shows relevant offers post-purchase; ML-powered relevance + recommendation backend."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "PitchBook Data"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://pitchbook.com/about/careers"
+    ats: "unknown"
+    blurb: "Private capital markets data platform (Morningstar subsidiary); large SLU engineering team; data pipelines + search infra at scale."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Amigo"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://amigohealth.com/careers"
+    ats: "unknown"
+    blurb: "AI agents for healthcare with compliance controls; Madrona-backed; clinical workflow automation."
+    tier: 2
+    hires_mid_level: false
+    source: "madrona"
+
+  - name: "Impinj"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    stage: "public"
+    careers_url: "https://www.impinj.com/company/careers"
+    ats: "unknown"
+    blurb: "RFID/item-intelligence platform (NASDAQ: PI); SLU HQ; IoT cloud + embedded system software. Interesting hardware-software intersection."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Arrive (Arrived)"
+    neighborhood: "Downtown Seattle"
+    domain: "fintech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://www.arrived.com/careers"
+    ats: "unknown"
+    blurb: "Fractional ownership of rental real estate (Bezos-backed); fintech marketplace backend. PSL-incubated."
+    tier: 2
+    hires_mid_level: false
+    source: "psl"
+
+  - name: "Whatnot"
+    neighborhood: "South Lake Union"
+    domain: "consumer"
+    size: "scale-up (50-500)"
+    stage: "series-d"
+    careers_url: "https://www.whatnot.com/careers"
+    ats: "greenhouse"
+    blurb: "Live-stream shopping/auction marketplace; payments + real-time streaming backend; Senior SWE Payments listed on Built In Seattle."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Possible Finance"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://www.possiblefinance.com/careers"
+    ats: "unknown"
+    blurb: "Fintech for underbanked consumers (installment loans + credit building); Seattle HQ; mission-driven fintech infra."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Monte Carlo Data"
+    neighborhood: "South Lake Union (remote-first)"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    stage: "series-d"
+    careers_url: "https://www.montecarlodata.com/careers/"
+    ats: "unknown"
+    blurb: "Data observability platform (data downtime monitoring); ex-Uber/Intercom founders; strong data-reliability infra problems."
+    tier: 1
+    hires_mid_level: false
+    source: "builtin"
+
+  - name: "Spring Health"
+    neighborhood: "Downtown Seattle (remote-first)"
+    domain: "biotech"
+    size: "scale-up (50-500)"
+    stage: "series-e"
+    careers_url: "https://springhealth.com/careers/"
+    ats: "unknown"
+    blurb: "Mental health benefits platform (AI-personalized care matching); 1,300 employees; backend + data infra for clinical workflows."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Vannevar Labs"
+    neighborhood: "Downtown Seattle"
+    domain: "security"
+    size: "scale-up (50-500)"
+    stage: "series-c+"
+    careers_url: "https://www.vannevarlabs.com/careers"
+    ats: "unknown"
+    blurb: "AI/ML for defense intelligence; 225 employees; Seattle office; OSINT + data analytics for national security. Defense clearance may be required."
+    tier: 2
+    hires_mid_level: false
+    source: "builtin"
+
+  - name: "MORSE Corp"
+    neighborhood: "Downtown Seattle"
+    domain: "robotics"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://www.morsecorp.com/careers"
+    ats: "unknown"
+    blurb: "Defense-tech AI solutions for national security (autonomous systems, signal processing); 195 engineers; Seattle office."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Artera Health"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "scale-up (50-500)"
+    stage: "series-c+"
+    careers_url: "https://artera.io/careers"
+    ats: "unknown"
+    blurb: "AI-powered patient communications platform for health systems; 250 employees with SLU office; healthtech SaaS backend."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "RealNetworks"
+    neighborhood: "Downtown Seattle"
+    domain: "ai-ml"
+    size: "scale-up (50-500)"
+    stage: "public"
+    careers_url: "https://www.realnetworks.com/company/careers"
+    ats: "unknown"
+    blurb: "Pivoted to computer vision + AI (SAFR facial recognition, GameHouse); legacy Seattle tech company reinventing itself."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Tomo Mortgage"
+    neighborhood: "Downtown Seattle"
+    domain: "fintech"
+    size: "scale-up (50-500)"
+    stage: "series-b"
+    careers_url: "https://tomo.com/careers"
+    ats: "unknown"
+    blurb: "Digital mortgage lending with guaranteed close time; fintech + real-estate; Seattle HQ."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Metropolis Technologies"
+    neighborhood: "Downtown Seattle"
+    domain: "ai-ml"
+    size: "large (5000+)"
+    stage: "private-profitable"
+    careers_url: "https://metropolis.io/careers"
+    ats: "unknown"
+    blurb: "Computer vision platform for checkout-free parking payment; 23,000 employees (includes operators); vision inference at large scale."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Outpace Bio"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://outpacebio.com/careers"
+    ats: "unknown"
+    blurb: "Next-gen smart cell therapies for autoimmune diseases; SLU biotech; 42 employees; data + computational biology infra."
+    tier: 3
+    hires_mid_level: false
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # GAMING — Seattle has a deep cluster beyond v1
+  # ════════════════════════════════════════════════════════
+
+  - name: "Wizards of the Coast"
+    neighborhood: "Renton (secondary)"
+    domain: "gaming"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://company.wizards.com/en/careers"
+    ats: "unknown"
+    blurb: "D&D + Magic: The Gathering (Hasbro subsidiary); large game-services backend for Arena digital platform; 1,420 employees in Renton."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "343 Industries"
+    neighborhood: "Redmond"
+    domain: "gaming"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://www.halowaypoint.com/en-us/community/343-careers"
+    ats: "unknown"
+    blurb: "Halo franchise studio (Microsoft game studio); Redmond; live-service game backend at Xbox scale."
+    tier: 2
+    hires_mid_level: true
+    source: "direct-web"
+
+  - name: "ArenaNet"
+    neighborhood: "Bellevue"
+    domain: "gaming"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://www.arena.net/en/careers"
+    ats: "unknown"
+    blurb: "Guild Wars 2 studio (NCSoft subsidiary); Bellevue; live-service MMO backend, real-time systems."
+    tier: 2
+    hires_mid_level: true
+    source: "direct-web"
+
+  - name: "Probably Monsters"
+    neighborhood: "Bellevue"
+    domain: "gaming"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://www.probablymonsters.com/careers"
+    ats: "unknown"
+    blurb: "Employee-first indie game studio (Firewalk/Cauldron/Stormcloud teams); Bellevue; making next-gen multiplayer games."
+    tier: 2
+    hires_mid_level: true
+    source: "direct-web"
+
+  - name: "Smilegate West"
+    neighborhood: "Bellevue"
+    domain: "gaming"
+    size: "startup (<50)"
+    stage: "private-profitable"
+    careers_url: "https://smilegatewest.com/careers"
+    ats: "unknown"
+    blurb: "Seattle studio of Smilegate (CrossFire/Lost Ark creators); Bellevue; live-service game backend and engine work."
+    tier: 2
+    hires_mid_level: true
+    source: "direct-web"
+
+  - name: "FlowPlay"
+    neighborhood: "Downtown Seattle"
+    domain: "gaming"
+    size: "startup (<50)"
+    stage: "private-profitable"
+    careers_url: "https://flowplay.com/careers"
+    ats: "unknown"
+    blurb: "Social casino gaming platform (Vegas World); 61 employees; full-stack game backend in downtown Seattle."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "DoubleDown Interactive"
+    neighborhood: "Downtown Seattle"
+    domain: "gaming"
+    size: "startup (<50)"
+    stage: "public"
+    careers_url: "https://doubledowninteractive.com/careers"
+    ats: "unknown"
+    blurb: "Social casino / mobile games (DoubleDown Casino); 52 employees; Seattle HQ; public (NASDAQ: DDI)."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # CLIMATE / ENERGY
+  # ════════════════════════════════════════════════════════
+
+  - name: "IUNU"
+    neighborhood: "South Lake Union"
+    domain: "climate"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://iunu.com/careers"
+    ats: "unknown"
+    blurb: "AI-powered computer vision for greenhouse horticulture (yield + disease detection); SLU HQ; 69 employees."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Prologis Tech"
+    neighborhood: "South Lake Union"
+    domain: "climate"
+    size: "large (5000+)"
+    stage: "public"
+    careers_url: "https://careers.prologis.com/"
+    ats: "workday"
+    blurb: "World's largest logistics REIT ($100B+ portfolio); Seattle tech team builds IoT + energy optimization for their 1B sqft of warehouse space."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # BIOTECH / LIFE SCIENCES TECH (SLU cluster)
+  # ════════════════════════════════════════════════════════
+
+  - name: "Ai2 (Allen Institute for AI)"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://allenai.org/careers"
+    ats: "greenhouse"
+    blurb: "Non-profit AI research institute (OLMo, Semantic Scholar, AllenNLP); 293 employees in SLU; Lead SWE + AI Infrastructure roles open. Greenhoue ATS confirmed."
+    tier: 1
+    hires_mid_level: false
+    source: "direct-web"
+
+  - name: "Shape Therapeutics"
+    neighborhood: "South Lake Union"
+    domain: "biotech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://shapetx.com/careers"
+    ats: "unknown"
+    blurb: "RNA-editing gene therapy; SLU biotech; 117 employees; data + bioinformatics engineering opportunities."
+    tier: 3
+    hires_mid_level: false
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # AUTONOMOUS VEHICLES / ROBOTICS
+  # ════════════════════════════════════════════════════════
+
+  - name: "Aurora Innovation"
+    neighborhood: "South Lake Union"
+    domain: "robotics"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://aurora.tech/careers"
+    ats: "unknown"
+    blurb: "Self-driving trucking platform (public, NASDAQ: AUR); 1,579 employees; Seattle + Pittsburgh; autonomy stack + cloud simulation infra. No open roles listed as of 2026-04."
+    tier: 2
+    hires_mid_level: false
+    source: "builtin"
+
+  - name: "Zoox (Amazon)"
+    neighborhood: "Bellevue"
+    domain: "robotics"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://www.zoox.com/careers"
+    ats: "unknown"
+    blurb: "Autonomous robotaxi (Amazon subsidiary); Bellevue engineering office; simulation + fleet-infra engineering."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Woven by Toyota"
+    neighborhood: "Bellevue"
+    domain: "robotics"
+    size: "scale-up (50-500)"
+    stage: "private-profitable"
+    careers_url: "https://woven.toyota/en/careers"
+    ats: "unknown"
+    blurb: "Toyota's software + autonomous vehicle division; Bellevue; building Arene OS and AV simulation; 1,679 employees globally."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # FINTECH / PAYMENTS — additional names
+  # ════════════════════════════════════════════════════════
+
+  - name: "Stripe (Seattle)"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "large (5000+)"
+    stage: "series-i"
+    careers_url: "https://stripe.com/jobs"
+    ats: "lever"
+    blurb: "Payments infrastructure for the internet; 5,360 employees; large Seattle engineering office in SLU; distributed payments + API infra at scale."
+    tier: 1
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "SoFi Technologies (Seattle)"
+    neighborhood: "Downtown Seattle"
+    domain: "fintech"
+    size: "large (5000+)"
+    stage: "public"
+    careers_url: "https://www.sofi.com/careers/"
+    ats: "workday"
+    blurb: "Digital personal finance platform (public, NASDAQ: SOFI); 4,500 employees; Seattle engineering office; lending + banking backend."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Moov Financial"
+    neighborhood: "Downtown Seattle"
+    domain: "fintech"
+    size: "startup (<50)"
+    stage: "series-b"
+    careers_url: "https://moov.io/careers"
+    ats: "unknown"
+    blurb: "Open-source money movement infrastructure (ACH, RTP, wires) for developers; 63 employees in Seattle; embedded fintech + payments infra."
+    tier: 2
+    hires_mid_level: true
+    source: "builtin"
+
+  # ════════════════════════════════════════════════════════
+  # SAAS-B2B / ENTERPRISE TOOLS — additional
+  # ════════════════════════════════════════════════════════
+
+  - name: "Qualtrics"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    stage: "private-profitable"
+    careers_url: "https://www.qualtrics.com/careers/"
+    ats: "workday"
+    blurb: "Experience management platform (SAP spin-off, PE-backed); large SLU engineering office; data + platform backend at scale."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Sprout Social"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    stage: "public"
+    careers_url: "https://sproutsocial.com/careers/"
+    ats: "greenhouse"
+    blurb: "Social media management platform (public, NASDAQ: SPT); Seattle engineering office; data pipelines + social API integrations."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Evertune"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    stage: "seed"
+    careers_url: "https://evertune.com/careers"
+    ats: "unknown"
+    blurb: "AI + marketing intelligence for brand tracking and ad effectiveness; 30 employees in SLU."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Tango (tango.io)"
+    neighborhood: "Downtown Seattle"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    stage: "series-b"
+    careers_url: "https://www.tango.us/careers"
+    ats: "unknown"
+    blurb: "Automated how-to documentation platform (screenshots → step-by-step guides); 111 employees; developer-facing SaaS."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "Olis Robotics"
+    neighborhood: "Fremont"
+    domain: "robotics"
+    size: "startup (<50)"
+    stage: "series-a"
+    careers_url: "https://olisrobotics.com/careers"
+    ats: "unknown"
+    blurb: "Remote-control cloud robotics platform (fault recovery for industrial + space robots); PSL-incubated; Fremont HQ."
+    tier: 2
+    hires_mid_level: true
+    source: "psl"
+
+  # ════════════════════════════════════════════════════════
+  # MARINE / NAUTICAL TECH
+  # ════════════════════════════════════════════════════════
+
+  - name: "Foss Maritime"
+    neighborhood: "Belltown / Pier 67"
+    domain: "marine"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://www.fossmaritime.com/careers"
+    ats: "unknown"
+    blurb: "Largest US tugboat / marine transport operator; Seattle HQ; IoT + vessel-management software team. Hardware+software intersection."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"
+
+  - name: "SSA Marine"
+    neighborhood: "Downtown Seattle"
+    domain: "marine"
+    size: "mid (500-5000)"
+    stage: "private-profitable"
+    careers_url: "https://ssamarine.com/careers"
+    ats: "unknown"
+    blurb: "Cargo handling + marine terminal operator; Seattle HQ since 1949; logistics tech modernization efforts."
+    tier: 3
+    hires_mid_level: true
+    source: "builtin"

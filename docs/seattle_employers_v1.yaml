@@ -1,0 +1,371 @@
+# Seattle-area employers (v1) — researched 2026-04-24.
+#
+# Scope: Senior/Staff backend, distributed systems, platform, AI/ML infra.
+# Neighborhoods: downtown, SLU, Fremont, Ballard, Queen Anne, Belltown,
+# Redmond, Bellevue, Kirkland.
+#
+# Tier 1 = ideal fit, strong eng culture, interesting distributed-systems problems.
+# Tier 2 = solid scale-up, decent stack.
+# Tier 3 = mid/large with mixed culture.
+#
+# A v2 deep-search re-run (2026-04-24) widens this with mid-level roles,
+# AI2 Incubator portfolio, Madrona/PSL/Voyager/Founders' Co-op portfolio
+# companies, and earlier-stage startups.
+
+employers:
+  # ── Tier 1: Strong eng culture, interesting distributed-systems problems ──
+
+  - name: "Temporal Technologies"
+    neighborhood: "Bellevue"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    careers_url: "https://temporal.io/careers"
+    ats: "greenhouse"
+    blurb: "Workflow orchestration engine — exactly the distributed-systems infra Alex worked with at Uber."
+    tier: 1
+
+  - name: "Pulumi"
+    neighborhood: "Downtown Seattle"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.pulumi.com/careers/"
+    ats: "greenhouse"
+    blurb: "IaC platform — Python, Go, TypeScript for managing cloud resources."
+    tier: 1
+
+  - name: "Chainguard"
+    neighborhood: "Kirkland"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.chainguard.dev/careers"
+    ats: "unknown"
+    blurb: "Software supply-chain security; $280M raised 2026."
+    tier: 1
+
+  - name: "MotherDuck"
+    neighborhood: "Downtown Seattle"
+    domain: "developer-tools"
+    size: "startup (<50)"
+    careers_url: "https://jobs.ashbyhq.com/MotherDuck"
+    ats: "ashby"
+    blurb: "Serverless cloud analytics on DuckDB; a16z-backed, small team."
+    tier: 1
+
+  - name: "Anduril Industries"
+    neighborhood: "Fremont / Ship Canal"
+    domain: "robotics"
+    size: "mid (500-5000)"
+    careers_url: "https://job-boards.greenhouse.io/andurilindustries"
+    ats: "greenhouse"
+    blurb: "Defense-tech — autonomous surface vessels at the old Foss Shipyard; 76+ Seattle openings. Marine angle for Alex."
+    tier: 1
+
+  - name: "Statsig"
+    neighborhood: "South Lake Union"
+    domain: "developer-tools"
+    size: "startup (<50)"
+    careers_url: "https://jobs.ashbyhq.com/statsig"
+    ats: "ashby"
+    blurb: "Product experimentation / feature-flagging; ex-Meta engineers; Sequoia-backed."
+    tier: 1
+
+  - name: "Carbon Robotics"
+    neighborhood: "South Lake Union"
+    domain: "robotics"
+    size: "scale-up (50-500)"
+    careers_url: "https://carbonrobotics.com/careers"
+    ats: "custom"
+    blurb: "AI + laser robotics for agriculture (LaserWeeder); Go/Python, cloud + edge."
+    tier: 1
+
+  - name: "Qumulo"
+    neighborhood: "Downtown Seattle"
+    domain: "developer-tools"
+    size: "scale-up (50-500)"
+    careers_url: "https://qumulo.com/careers/"
+    ats: "custom"
+    blurb: "Distributed multi-cloud file storage; C/Rust/Python storage engine."
+    tier: 1
+
+  - name: "Protect AI"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "startup (<50)"
+    careers_url: "https://www.builtinseattle.com/company/protect-ai"
+    ats: "unknown"
+    blurb: "MLSecOps — security for AI/ML pipelines; well-funded."
+    tier: 1
+
+  - name: "Bluesky"
+    neighborhood: "Downtown Seattle (remote-first)"
+    domain: "developer-tools"
+    size: "startup (<50)"
+    careers_url: "https://bsky.social/about/join"
+    ats: "unknown"
+    blurb: "Decentralized social network on AT Protocol; Go + TypeScript, distributed data infra."
+    tier: 1
+
+  # ── Tier 2: Solid scale-ups, decent stacks ──
+
+  - name: "Remitly"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "large (5000+)"
+    careers_url: "https://careers.remitly.com/"
+    ats: "workday"
+    blurb: "Global money-transfer; large payments backend in SLU HQ."
+    tier: 2
+
+  - name: "Highspot"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://jobs.lever.co/highspot"
+    ats: "lever"
+    blurb: "AI-powered sales enablement."
+    tier: 2
+
+  - name: "Outreach"
+    neighborhood: "South Lake Union"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://jobs.lever.co/outreach"
+    ats: "lever"
+    blurb: "Sales-execution platform (Series F, unicorn); large Python/Go backend."
+    tier: 2
+
+  - name: "Okta / Auth0"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://www.okta.com/company/careers/job-listing/"
+    ats: "workday"
+    blurb: "Identity platform; Auth0 unit in Bellevue does core identity pipeline."
+    tier: 2
+
+  - name: "Smartsheet"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://job-boards.greenhouse.io/smartsheet"
+    ats: "greenhouse"
+    blurb: "Collaborative work-management SaaS (public); large platform/backend org."
+    tier: 2
+
+  - name: "Carta"
+    neighborhood: "South Lake Union"
+    domain: "fintech"
+    size: "scale-up (50-500)"
+    careers_url: "https://job-boards.greenhouse.io/carta"
+    ats: "greenhouse"
+    blurb: "Cap-table + equity mgmt for startups; engineering-forward."
+    tier: 2
+
+  - name: "OfferUp"
+    neighborhood: "Bellevue"
+    domain: "consumer"
+    size: "scale-up (50-500)"
+    careers_url: "https://job-boards.greenhouse.io/offerup"
+    ats: "greenhouse"
+    blurb: "P2P marketplace; substantial Java/Python backend."
+    tier: 2
+
+  - name: "Tanium"
+    neighborhood: "Bellevue / Kirkland"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://www.tanium.com/careers/"
+    ats: "greenhouse"
+    blurb: "Real-time endpoint mgmt + security; Go/Kubernetes; good comp."
+    tier: 2
+
+  - name: "ExtraHop"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://job-boards.greenhouse.io/extrahopnetworks"
+    ats: "greenhouse"
+    blurb: "Network detection + response (CrowdStrike acquired but Seattle HQ remains); ML-based."
+    tier: 2
+
+  - name: "INRIX"
+    neighborhood: "Kirkland"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://inrix.com/careers/"
+    ats: "custom"
+    blurb: "Connected-vehicle data + traffic analytics; Java/data-platform."
+    tier: 2
+
+  - name: "Hiya"
+    neighborhood: "South Lake Union"
+    domain: "ai-ml"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.builtinseattle.com/company/hiya-inc/jobs"
+    ats: "unknown"
+    blurb: "AI voice-intelligence — 28B+ calls/month for spam/fraud; Node.js/AWS."
+    tier: 2
+
+  - name: "Rover"
+    neighborhood: "Belltown"
+    domain: "consumer"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.rover.com/careers/"
+    ats: "lever"
+    blurb: "Pet-care marketplace; payments + marketplace backend."
+    tier: 2
+
+  - name: "DomainTools"
+    neighborhood: "Belltown"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://apply.workable.com/domain-tools/"
+    ats: "custom"
+    blurb: "DNS + domain threat intelligence; cybersecurity data backend."
+    tier: 2
+
+  - name: "Icertis"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    careers_url: "https://www.icertis.com/company/careers/"
+    ats: "unknown"
+    blurb: "Contract lifecycle management on Azure."
+    tier: 2
+
+  - name: "Avalara"
+    neighborhood: "Downtown Seattle"
+    domain: "fintech"
+    size: "large (5000+)"
+    careers_url: "https://careers.avalara.com/"
+    ats: "custom"
+    blurb: "Tax-compliance automation (Vista Equity); large distributed calc engine."
+    tier: 2
+
+  - name: "Bungie"
+    neighborhood: "Bellevue"
+    domain: "gaming"
+    size: "mid (500-5000)"
+    careers_url: "https://careers.bungie.com/jobs"
+    ats: "custom"
+    blurb: "Destiny franchise; game-services backend at scale."
+    tier: 2
+
+  - name: "Valve Corporation"
+    neighborhood: "Bellevue"
+    domain: "gaming"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.valvesoftware.com/en/jobs"
+    ats: "custom"
+    blurb: "Steam + games (flat org); billions of daily queries, distributed systems."
+    tier: 2
+
+  - name: "Leafly"
+    neighborhood: "Pioneer Square"
+    domain: "consumer"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.leafly.com/info/jobs"
+    ats: "unknown"
+    blurb: "Cannabis info + retail platform; small eng team."
+    tier: 2
+
+  - name: "Kymeta"
+    neighborhood: "Redmond"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.kymetacorp.com/about/careers"
+    ats: "unknown"
+    blurb: "Flat-panel satellite connectivity (mobility + maritime); marine angle."
+    tier: 2
+
+  # ── Tier 3: Mid/large, mixed eng culture ──
+
+  - name: "Expedia Group"
+    neighborhood: "South Lake Union / Eastlake"
+    domain: "consumer"
+    size: "large (5000+)"
+    careers_url: "https://careers.expediagroup.com/jobs/"
+    ats: "workday"
+    blurb: "Travel platform; large HQ campus on Lake Union waterfront."
+    tier: 3
+
+  - name: "Zillow Group"
+    neighborhood: "South Lake Union"
+    domain: "consumer"
+    size: "large (5000+)"
+    careers_url: "https://careers.zillowgroup.com/"
+    ats: "workday"
+    blurb: "Real-estate marketplace; large Seattle HQ; mostly remote-flexible."
+    tier: 3
+
+  - name: "F5 Networks"
+    neighborhood: "Downtown Seattle"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://www.f5.com/company/careers"
+    ats: "workday"
+    blurb: "Application delivery networking + security; distributed multi-cloud."
+    tier: 3
+
+  - name: "Salesforce / Tableau"
+    neighborhood: "Fremont / SLU"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://careers.salesforce.com/"
+    ats: "workday"
+    blurb: "Tableau is Fremont, Salesforce tower is SLU; big-co culture."
+    tier: 3
+
+  - name: "Adobe (Seattle)"
+    neighborhood: "Fremont"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://careers.adobe.com/"
+    ats: "workday"
+    blurb: "Creative Cloud, Substance, analytics product teams."
+    tier: 3
+
+  - name: "Apptio (IBM)"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "large (5000+)"
+    careers_url: "https://www.ibm.com/careers"
+    ats: "workday"
+    blurb: "IT financial management SaaS (IBM-acquired); mixed post-acquisition culture."
+    tier: 3
+
+  - name: "Nintex"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    careers_url: "https://www.nintex.com/company/careers/"
+    ats: "unknown"
+    blurb: "Process automation + workflow on Azure."
+    tier: 3
+
+  - name: "SkyKick"
+    neighborhood: "Lower Queen Anne"
+    domain: "saas-b2b"
+    size: "scale-up (50-500)"
+    careers_url: "https://www.skykick.com/company/careers/"
+    ats: "unknown"
+    blurb: "Cloud migration + backup for M365 MSPs; Alex's neighbor in LQA."
+    tier: 3
+
+  - name: "Lululemon (Tech)"
+    neighborhood: "South Lake Union"
+    domain: "consumer"
+    size: "large (5000+)"
+    careers_url: "https://careers.lululemon.com/"
+    ats: "workday"
+    blurb: "SLU engineering org; Kubernetes/CI/CD/DevEx hiring."
+    tier: 3
+
+  - name: "EagleView Technologies"
+    neighborhood: "Bellevue"
+    domain: "saas-b2b"
+    size: "mid (500-5000)"
+    careers_url: "https://www.eagleview.com/about-us/careers/"
+    ats: "unknown"
+    blurb: "Aerial imagery + AI analytics for insurance + property."
+    tier: 3

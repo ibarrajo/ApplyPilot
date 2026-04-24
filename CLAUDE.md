@@ -186,3 +186,21 @@ Error patterns:
 4. **Editable install**: `pip install -e .` means source edits take effect immediately.
 5. **gemini-2.0-flash deprecated**: Use `gemini-2.5-flash` or newer for new API users.
 6. **Docker MCP Toolkit interference**: If Docker Desktop is installed with MCP Toolkit, it exposes `mcp__MCP_DOCKER__browser_*` tools that shadow the local Playwright MCP. These Docker tools can't access the host filesystem, breaking resume/cover letter uploads. Fix: `--strict-mcp-config` in the claude subprocess command.
+
+---
+
+## Future Work — Local-employer discovery expansion (2026-04-24)
+
+Two YAML files in `docs/` catalog ~120 Seattle-area employers (Downtown / SLU / Fremont / Ballard / Queen Anne / Belltown / Redmond / Bellevue / Kirkland / Capitol Hill / Eastlake):
+
+- `docs/seattle_employers_v1.yaml` — 41 companies, senior/staff-focused
+- `docs/seattle_employers_v2.yaml` — 80 net-new from AI2 Incubator, Madrona, PSL, Voyager, Built In Seattle, and gaming/biotech clusters
+
+**TODOs to integrate these into discovery:**
+
+1. **Workday scraping (quick win, ~1h):** verify tenant subdomains for the ~14 Workday-hosted companies and add to `src/applypilot/config/employers.yaml` following the existing pattern (`tenant`, `site_id`, `base_url`). Candidates: Remitly, Okta, Expedia Group, Zillow Group, F5, Salesforce, Adobe Seattle, Apptio, Lululemon, Prologis Tech, Qualtrics, SoFi.
+2. **Greenhouse scraper (medium, sub-project):** ~20 Tier-1 companies use Greenhouse (Temporal, Pulumi, Anduril, Carta, Smartsheet, Tanium, OfferUp, ExtraHop, Databricks, Axon, Sprout Social, Stackline, Yoodli, Ai2, etc.). One scraper unlocks all of them. Greenhouse has a public JSON API at `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs`.
+3. **Lever scraper (small, sub-project):** Stripe, Highspot, Outreach, Rover. Lever API: `https://api.lever.co/v0/postings/{slug}?mode=json`.
+4. **Ashby scraper (small, sub-project):** MotherDuck, Statsig, Deepgram, Common Room, DevZero, Impart Security, Clarify. Ashby has a private API — may need Playwright scrape.
+
+Roadmap: do Workday first (aligns with existing code), then build a single generic "JSON-API ATS" scraper that covers Greenhouse + Lever (both have clean JSON) as one medium-sized sub-project.
