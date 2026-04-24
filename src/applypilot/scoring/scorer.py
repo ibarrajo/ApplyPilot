@@ -284,6 +284,10 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
     On failure (score is None): leaves fit_score NULL, writes score_error + backoff.
     Jobs that have already hit MAX_SCORE_RETRIES stay unscored indefinitely (manual rescue needed).
     """
+    from applypilot.database import transition_state
+    from applypilot.config import DEFAULTS as _cfg_DEFAULTS
+    _min_score = _cfg_DEFAULTS["min_score"]
+
     for r in batch:
         if r["score"] is not None:
             conn.execute(
@@ -292,6 +296,11 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
                 "WHERE url = ?",
                 (r["score"], f"{r['keywords']}\n{r['reasoning']}", now, r["url"]),
             )
+            # Emit state transition: scored (>= threshold) vs low_score
+            to_state = "scored" if r["score"] >= _min_score else "low_score"
+            transition_state(conn, r["url"], to_state,
+                             reason=f"scored {r['score']}/10",
+                             metadata={"score": r["score"]})
         else:
             # LLM failure — keep fit_score NULL so it stays in pending_score
             row = conn.execute(
@@ -305,6 +314,9 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
                     "score_next_retry_at = NULL, scored_at = ? WHERE url = ?",
                     (r["error"], retry_count + 1, now, r["url"]),
                 )
+                transition_state(conn, r["url"], "score_failed",
+                                 reason=f"LLM failed after {retry_count+1} attempts",
+                                 metadata={"error": r["error"]})
             else:
                 delay = _score_backoff_minutes(retry_count)
                 next_retry = (

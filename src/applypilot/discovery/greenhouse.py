@@ -175,6 +175,10 @@ def scrape_one_employer(
         content_html = content_html.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
         description = _strip_html(content_html)
 
+        # Greenhouse returns `updated_at` + `first_published`. Prefer the
+        # earlier posting date when available.
+        posted_at = job.get("first_published") or job.get("updated_at") or None
+
         out.append({
             "url": abs_url,
             "title": job.get("title") or "",
@@ -184,6 +188,7 @@ def scrape_one_employer(
             "application_url": abs_url,
             "employer_name": name,
             "employer_slug": slug,
+            "posted_at": posted_at,
         })
 
     return out, None
@@ -207,14 +212,22 @@ def _insert_jobs(conn: sqlite3.Connection, jobs: list[dict]) -> tuple[int, int]:
         site = job.get("employer_name", "Greenhouse")
         strategy = "greenhouse_api"
 
+        initial_state = "enriched" if full_description else "discovered"
         try:
             conn.execute(
                 "INSERT INTO jobs (url, title, salary, description, location, site, strategy, "
-                "discovered_at, full_description, application_url, detail_scraped_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "discovered_at, posted_at, full_description, application_url, "
+                "detail_scraped_at, state) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (url, job.get("title"), None, job.get("description"), job.get("location"),
-                 site, strategy, now, full_description, job.get("application_url"),
-                 detail_scraped_at),
+                 site, strategy, now, job.get("posted_at"), full_description,
+                 job.get("application_url"), detail_scraped_at, initial_state),
+            )
+            conn.execute(
+                "INSERT INTO job_state_transitions "
+                "(job_url, from_state, to_state, at, reason, metadata) "
+                "VALUES (?, NULL, ?, ?, ?, ?)",
+                (url, initial_state, now, f"discovered via {strategy}", None),
             )
             new += 1
         except sqlite3.IntegrityError:

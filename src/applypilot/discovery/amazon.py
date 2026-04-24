@@ -204,14 +204,26 @@ def _insert_jobs(conn: sqlite3.Connection, jobs: list[dict]) -> tuple[int, int]:
             continue
         full_description = job.get("full_description")
         detail_scraped_at = now if full_description else None
+        posted_at = job.get("posted_date") or None
+        # Jobs with descriptions skip the `discovered` state and start at
+        # `enriched` since Amazon returns full text in the search response.
+        initial_state = "enriched" if full_description else "discovered"
         try:
             conn.execute(
                 "INSERT INTO jobs (url, title, salary, description, location, site, strategy, "
-                "discovered_at, full_description, application_url, detail_scraped_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "discovered_at, posted_at, full_description, application_url, "
+                "detail_scraped_at, state) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (url, job.get("title"), None, job.get("description"), job.get("location"),
-                 "Amazon", "amazon_jobs", now, full_description, job.get("application_url"),
-                 detail_scraped_at),
+                 "Amazon", "amazon_jobs", now, posted_at, full_description,
+                 job.get("application_url"), detail_scraped_at, initial_state),
+            )
+            # Audit: initial transition from NULL → initial_state
+            conn.execute(
+                "INSERT INTO job_state_transitions "
+                "(job_url, from_state, to_state, at, reason, metadata) "
+                "VALUES (?, NULL, ?, ?, ?, ?)",
+                (url, initial_state, now, "discovered via amazon_jobs", None),
             )
             new += 1
         except sqlite3.IntegrityError:

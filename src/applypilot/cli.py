@@ -556,6 +556,41 @@ def status() -> None:
             more = f" (+{bbc['count'] - 10} more)" if bbc["count"] > 10 else ""
             console.print(f"  [dim]{preview}{more}[/dim]")
 
+    # ── Pipeline state distribution (2026-04-24 state machine) ────
+    from applypilot.database import get_connection as _get_conn
+    _sc_conn = _get_conn()
+    state_rows = _sc_conn.execute(
+        "SELECT state, COUNT(*) FROM jobs WHERE state IS NOT NULL "
+        "GROUP BY state ORDER BY COUNT(*) DESC"
+    ).fetchall()
+    if state_rows:
+        state_table = Table(
+            title="\nPipeline State Distribution",
+            show_header=True, header_style="bold cyan",
+        )
+        state_table.add_column("State", style="bold")
+        state_table.add_column("Count", justify="right")
+        # Color-code by lifecycle phase.
+        TERMINAL_OK = {"applied", "responded", "interview", "offer"}
+        TERMINAL_BAD = {"rejected", "ghosted", "archived", "apply_failed",
+                        "enrich_failed", "score_failed", "tailor_failed",
+                        "cover_failed", "low_score"}
+        ACTIVE = {"applying", "tailoring", "cover_writing",
+                  "ready_to_apply", "needs_human"}
+        for r in state_rows:
+            st = r[0]
+            n = r[1]
+            if st in TERMINAL_OK:
+                color = "green"
+            elif st in TERMINAL_BAD:
+                color = "dim"
+            elif st in ACTIVE:
+                color = "yellow"
+            else:
+                color = "cyan"
+            state_table.add_row(f"[{color}]{st}[/{color}]", str(n))
+        console.print(state_table)
+
     console.print()
 
 

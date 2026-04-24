@@ -1253,6 +1253,15 @@ def acquire_job(target_url: str | None = None,
                            last_attempted_at = ?
             WHERE url = ?
         """, (f"worker-{worker_id}", now, row["url"]))
+
+        # Emit state transition: ready_to_apply → applying (force=True since
+        # the in-flight job may currently be at apply_failed from a prior run).
+        from applypilot.database import transition_state
+        transition_state(conn, row["url"], "applying",
+                         reason=f"worker-{worker_id} acquired",
+                         metadata={"worker_id": worker_id},
+                         force=True)
+
         conn.commit()
 
         return dict(row)
@@ -1264,7 +1273,8 @@ def acquire_job(target_url: str | None = None,
 def mark_result(url: str, status: str, error: str | None = None,
                 permanent: bool = False, duration_ms: int | None = None,
                 task_id: str | None = None) -> None:
-    """Update a job's apply status in the database."""
+    """Update a job's apply status in the database + emit state transition."""
+    from applypilot.database import transition_state
     conn = get_connection()
     now = datetime.now(timezone.utc).isoformat()
     if status == "applied":
@@ -1275,6 +1285,10 @@ def mark_result(url: str, status: str, error: str | None = None,
                            apply_category = 'applied'
             WHERE url = ?
         """, (now, duration_ms, task_id, url))
+        transition_state(conn, url, "applied",
+                         reason="submission completed",
+                         metadata={"duration_ms": duration_ms, "task_id": task_id},
+                         force=True)
     else:
         attempts = 99 if permanent else "COALESCE(apply_attempts, 0) + 1"
         category = categorize_apply_result(status, error)
@@ -1285,6 +1299,19 @@ def mark_result(url: str, status: str, error: str | None = None,
                            apply_category = ?
             WHERE url = ?
         """, (status, error or "unknown", duration_ms, task_id, category, url))
+
+        # Map the legacy apply_status value to a state-machine state.
+        to_state = {
+            "failed":       "apply_failed",
+            "manual":       "manual_only",
+            "needs_human":  "needs_human",
+        }.get(status, "apply_failed")
+        transition_state(conn, url, to_state,
+                         reason=(error or status)[:200],
+                         metadata={"category": category,
+                                   "duration_ms": duration_ms,
+                                   "task_id": task_id},
+                         force=True)
     _db_retry_commit(conn)
 
 
