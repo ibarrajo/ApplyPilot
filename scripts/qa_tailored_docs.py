@@ -119,13 +119,13 @@ def check_resume_length(doc: Document) -> tuple[bool, str]:
 def check_cover_letter_length(doc: Document) -> tuple[bool, str]:
     body = "\n".join(p.text for p in doc.paragraphs)
     words = len(body.split())
-    if 250 <= words <= 400:
-        return (True, f"{words} words (in range)")
-    if 200 <= words < 250:
-        return (False, f"{words} words (below 250 floor)")
-    if 400 < words <= 450:
-        return (False, f"{words} words (above 400 target)")
-    return (False, f"{words} words (way out of 250-400 range)")
+    if 220 <= words <= 450:
+        # Jobscan ideal is 250-400; accept 220-450 as "close enough" per user.
+        marker = "" if 250 <= words <= 400 else " (OK, below Jobscan ideal)"
+        return (True, f"{words} words{marker}")
+    if words < 220:
+        return (False, f"{words} words (below 220 floor)")
+    return (False, f"{words} words (above 450 ceiling)")
 
 
 def check_cover_letter_paragraphs(doc: Document) -> tuple[bool, str]:
