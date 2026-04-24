@@ -305,10 +305,13 @@ def run_cover_letters(min_score: int | None = None, limit: int = 20, workers: in
     def _flush_cover_results(conn, results, now):
         for r in results:
             if r.get("path"):
+                # Prefer the generated DOCX/PDF path; fall back to text path
+                # if conversion failed (apply layer will flag as invalid).
+                stored_path = r.get("pdf_path") or r["path"]
                 conn.execute(
                     "UPDATE jobs SET cover_letter_path=?, cover_letter_at=?, "
                     "cover_attempts=COALESCE(cover_attempts,0)+1 WHERE url=?",
-                    (r["path"], now, r["url"]),
+                    (stored_path, now, r["url"]),
                 )
             else:
                 conn.execute(

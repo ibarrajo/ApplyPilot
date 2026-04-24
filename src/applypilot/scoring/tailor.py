@@ -603,10 +603,14 @@ def run_tailoring(min_score: int | None = None, limit: int = 20, workers: int = 
     def _flush_tailor_results(conn, results, now):
         for r in results:
             if r["status"] == "approved":
+                # Prefer the generated DOCX/PDF path. Fall back to the text
+                # path only if conversion silently failed (e.g., missing
+                # python-docx); the apply layer will flag that as invalid.
+                stored_path = r.get("pdf_path") or r["path"]
                 conn.execute(
                     "UPDATE jobs SET tailored_resume_path=?, tailored_at=?, "
                     "tailor_attempts=COALESCE(tailor_attempts,0)+1 WHERE url=?",
-                    (r["path"], now, r["url"]),
+                    (stored_path, now, r["url"]),
                 )
             else:
                 conn.execute(
