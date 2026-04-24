@@ -469,9 +469,9 @@ def render_docx(resume: dict, output_path: str, metadata: dict | None = None) ->
             val_run = p.add_run(val)
             val_run.font.size = Pt(9.5)
 
-    # --- Experience ---
+    # --- Experience (Jobscan §4: prefer "Work Experience" over bare "Experience") ---
     if "EXPERIENCE" in sections:
-        _add_section_heading("Experience")
+        _add_section_heading("Work Experience")
         for entry in parse_entries(sections["EXPERIENCE"]):
             tp = doc.add_paragraph()
             tp.paragraph_format.space_before = Pt(2)

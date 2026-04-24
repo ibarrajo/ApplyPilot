@@ -61,13 +61,15 @@ def _build_cover_letter_prompt(profile: dict) -> str:
 
     return f"""Write a cover letter for {sign_off_name}. The goal is to get an interview.
 
-STRUCTURE: 3 short paragraphs. Under 250 words. Every sentence must earn its place.
+STRUCTURE: 4 paragraphs. 250-400 words (Jobscan 3.4x interview-rate sweet spot). Every sentence must earn its place.
 
-PARAGRAPH 1 (2-3 sentences): Open with a specific thing YOU built that solves THEIR problem. Not "I'm excited about this role." Not "This role aligns with my experience." Start with the work.
+PARAGRAPH 1 — HOOK (3-4 sentences): Open with a specific thing YOU built that solves THEIR problem. Identify the problem they're hiring to solve (infer from the job description) and name the work you've done that directly addresses it. Not "I'm excited about this role." Not "This role aligns with my experience." Start with the work.
 
-PARAGRAPH 2 (3-4 sentences): Pick 2 achievements from the resume that are MOST relevant to THIS job. Use numbers. Frame as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
+PARAGRAPH 2 — EVIDENCE (3-5 sentences): Pick 2 achievements from the resume that are MOST relevant to THIS job. Use concrete numbers. Frame each as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
 
-PARAGRAPH 3 (1-2 sentences): One specific thing about the company from the job description (a product, a technical challenge, a team structure). Then close. "Happy to walk through any of this in more detail." or "Let's discuss." Nothing else.
+PARAGRAPH 3 — COMPANY FIT (2-3 sentences): Reference one specific thing about the company from the job description (a product, a technical challenge, a team structure). Connect it to your experience with a concrete parallel, not a generic nod.
+
+PARAGRAPH 4 — CLOSE (1-2 sentences): Short CTA. "Happy to walk through any of this in more detail." or "Let's discuss specifics." Nothing else, then sign off.
 
 BANNED WORDS/PHRASES (using ANY of these = instant rejection):
 "resonated", "aligns with", "passionate", "eager", "eager to", "excited to apply", "I am confident",
@@ -171,12 +173,20 @@ def generate_cover_letter(
 
 def _cover_one_job(job: dict, resume_text: str, profile: dict, doc_format: str = "docx") -> dict:
     """Generate cover letter for a single job. Safe to call from multiple threads."""
+    from applypilot.scoring.tailor import _name_parts, _extract_keywords
     letter = generate_cover_letter(resume_text, job, profile)
 
+    # Filename: FirstName_LastName_JobTitle_hash_CL.{ext} (Jobscan §3).
+    first, last = _name_parts(profile)
     safe_title = re.sub(r"[^\w\s-]", "", job.get("title") or "untitled")[:50].strip().replace(" ", "_")
-    safe_site = re.sub(r"[^\w\s-]", "", job["site"])[:20].strip().replace(" ", "_")
     url_hash = hashlib.md5(job["url"].encode()).hexdigest()[:8]
-    prefix = f"{safe_site}_{safe_title}_{url_hash}"
+    if first and last:
+        prefix = f"{first}_{last}_{safe_title}_{url_hash}"
+    elif first:
+        prefix = f"{first}_{safe_title}_{url_hash}"
+    else:
+        safe_site = re.sub(r"[^\w\s-]", "", job["site"])[:20].strip().replace(" ", "_")
+        prefix = f"{safe_site}_{safe_title}_{url_hash}"
 
     cl_path = COVER_LETTER_DIR / f"{prefix}_CL.txt"
     cl_path.write_text(letter, encoding="utf-8")
@@ -188,12 +198,12 @@ def _cover_one_job(job: dict, resume_text: str, profile: dict, doc_format: str =
         full_name = personal.get("full_name") or personal.get("preferred_name") or ""
         job_title = (job.get("title") or "").strip()[:150]
         site = (job.get("site") or "").strip()[:80]
-        score = job.get("fit_score")
         cl_metadata = {
             "title": f"Cover Letter — {full_name} for {job_title}" if full_name else f"Cover Letter — {job_title}",
             "subject": job_title,
             "author": full_name,
             "category": "Cover Letter",
+            "keywords": _extract_keywords(job, profile),
             "comments": (
                 f"Cover letter for: {job_title}\n"
                 f"Source: {site}\n"

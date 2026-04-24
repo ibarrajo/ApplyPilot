@@ -446,14 +446,72 @@ def tailor_resume(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
+def _name_parts(profile: dict) -> tuple[str, str]:
+    """Return (first, last) name parts from profile, sanitized for filenames.
+
+    Prefers preferred_name for the given-name half when available (e.g. "Alex"
+    from "Josue Alexander Ibarra") so generated filenames match the
+    candidate's public-facing name.
+    """
+    personal = profile.get("personal", {})
+    preferred = (personal.get("preferred_name") or "").strip()
+    full = (personal.get("full_name") or "").strip()
+    parts = [p for p in re.split(r"\s+", full) if p] if full else []
+
+    first_raw = preferred or (parts[0] if parts else "")
+    last_raw = parts[-1] if len(parts) > 1 else ""
+    first = re.sub(r"[^\w]", "", first_raw)
+    last = re.sub(r"[^\w]", "", last_raw)
+    return (first, last)
+
+
+def _extract_keywords(job: dict, profile: dict, limit: int = 12) -> list[str]:
+    """Extract ATS-relevant keywords from the job description.
+
+    Returns the job title followed by any candidate boundary skills that
+    appear in the title or description. Populated into DOCX
+    core_properties.keywords so recruiters / ATS scanning document
+    properties see a relevant keyword cloud.
+    """
+    result: list[str] = []
+    title = (job.get("title") or "").strip()
+    if title:
+        result.append(title)
+
+    boundary = profile.get("skills_boundary", {})
+    skills: list[str] = []
+    for items in boundary.values():
+        if isinstance(items, list):
+            skills.extend(s for s in items if isinstance(s, str) and s)
+
+    desc_head = (job.get("full_description") or "")[:4000].lower()
+    combined = f"{title.lower()} {desc_head}"
+
+    for skill in skills:
+        if len(result) >= limit:
+            break
+        if skill.lower() in combined and skill not in result:
+            result.append(skill)
+
+    return result
+
+
 def _tailor_one_job(job: dict, resume_text: str, profile: dict, doc_format: str = "docx") -> dict:
     """Tailor resume for a single job. Safe to call from multiple threads."""
     tailored, report = tailor_resume(resume_text, job, profile)
 
+    # Filename: FirstName_LastName_JobTitle_hash.docx per Jobscan §3.
+    # Hash retains uniqueness since the same title may recur across employers.
+    first, last = _name_parts(profile)
     safe_title = re.sub(r"[^\w\s-]", "", job.get("title") or "untitled")[:50].strip().replace(" ", "_")
-    safe_site = re.sub(r"[^\w\s-]", "", job["site"])[:20].strip().replace(" ", "_")
     url_hash = hashlib.md5(job["url"].encode()).hexdigest()[:8]
-    prefix = f"{safe_site}_{safe_title}_{url_hash}"
+    if first and last:
+        prefix = f"{first}_{last}_{safe_title}_{url_hash}"
+    elif first:
+        prefix = f"{first}_{safe_title}_{url_hash}"
+    else:
+        safe_site = re.sub(r"[^\w\s-]", "", job["site"])[:20].strip().replace(" ", "_")
+        prefix = f"{safe_site}_{safe_title}_{url_hash}"
 
     txt_path = TAILORED_DIR / f"{prefix}.txt"
     txt_path.write_text(tailored, encoding="utf-8")
@@ -486,6 +544,7 @@ def _tailor_one_job(job: dict, resume_text: str, profile: dict, doc_format: str 
                 "subject": job_title,
                 "author": full_name,
                 "category": "Resume",
+                "keywords": _extract_keywords(job, profile),
                 "comments": (
                     f"Customized for: {job_title}\n"
                     f"Source: {site}\n"

@@ -314,10 +314,14 @@ def validate_cover_letter(text: str) -> dict:
     if found:
         warnings.append(f"Banned words (style): {', '.join(found[:5])}")
 
-    # 3. Too long (275 buffer over the 250-word prompt instruction)
+    # 3. Word count — target 250-400 per Jobscan (3.4x interview-rate sweet spot).
+    # Allow a small buffer on each side: [200, 450]. Below 200 is too thin;
+    # above 450 is too long for a one-page cover letter.
     words = len(text.split())
-    if words > 275:
-        errors.append(f"Too long ({words} words). Max 275.")
+    if words > 450:
+        errors.append(f"Too long ({words} words). Target 250-400 per Jobscan.")
+    if words < 200:
+        errors.append(f"Too short ({words} words). Target 250-400 per Jobscan.")
 
     # 4. LLM self-talk
     found_leaks = [p for p in LLM_LEAK_PHRASES if p in text_lower]
