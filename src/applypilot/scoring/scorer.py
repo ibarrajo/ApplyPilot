@@ -92,7 +92,19 @@ _INELIGIBLE_TITLE_PATTERNS = re.compile(
     r'|\bSales Engineer\b'
     r'|\bSolutions Engineer\b'
     r'|\bPre[- ]?[Ss]ales\b'
-    r'|\bCustomer Success Engineer\b',
+    r'|\bCustomer Success Engineer\b'
+    # More seniority — "Graduate Developer"/"Graduate Software Engineer" patterns
+    # Protected: "Graduate School", "Graduate Student" (those don't appear in job titles)
+    r'|\bGraduate\b'
+    # Non-engineering roles
+    r'|\bRecruiter\b'
+    r'|\bTalent Acquisition\b|\bTalent Scout\b|\bTalent Sourcer\b'
+    r'|\bAccount Manager\b|\bAccount Executive\b'
+    r'|\bUX Designer\b|\bUI Designer\b|\bProduct Designer\b|\bGraphic Designer\b'
+    # Specialist IC roles outside the target stack (mobile, legacy enterprise)
+    r'|\bAndroid Engineer\b|\biOS Engineer\b|\bMobile Engineer\b'
+    r'|\bSalesforce Developer\b|\bApex Developer\b'
+    r'|\bMainframe Engineer\b|\bCOBOL Developer\b|\bTIBCO\b',
     re.IGNORECASE,
 )
 

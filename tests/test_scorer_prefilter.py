@@ -66,6 +66,49 @@ def test_customer_success_engineer_rejected():
     assert _check_ineligible(_job(title="Senior Customer Success Engineer")) is not None
 
 
+# ── Additional safe patterns (validated 2026-04-23 round 2) ─────────
+
+def test_graduate_title_rejected():
+    assert _check_ineligible(_job(title="Graduate Developer")) is not None
+    assert _check_ineligible(_job(title="Graduate Software Engineer")) is not None
+
+
+def test_recruiter_title_rejected():
+    assert _check_ineligible(_job(title="Technical Recruiter")) is not None
+    assert _check_ineligible(_job(title="Senior Talent Acquisition Partner")) is not None
+
+
+def test_account_manager_title_rejected():
+    assert _check_ineligible(_job(title="Senior Account Manager")) is not None
+    assert _check_ineligible(_job(title="Enterprise Account Executive")) is not None
+
+
+def test_designer_title_rejected():
+    assert _check_ineligible(_job(title="Senior UX Designer")) is not None
+    assert _check_ineligible(_job(title="Product Designer")) is not None
+    assert _check_ineligible(_job(title="Graphic Designer")) is not None
+
+
+def test_mobile_only_title_rejected():
+    assert _check_ineligible(_job(title="Senior Android Engineer")) is not None
+    assert _check_ineligible(_job(title="iOS Engineer")) is not None
+    assert _check_ineligible(_job(title="Mobile Engineer")) is not None
+
+
+def test_legacy_stack_title_rejected():
+    assert _check_ineligible(_job(title="Salesforce Developer")) is not None
+    assert _check_ineligible(_job(title="Apex Developer")) is not None
+    assert _check_ineligible(_job(title="Mainframe Engineer (COBOL)")) is not None
+    assert _check_ineligible(_job(title="Senior TIBCO Developer")) is not None
+
+
+def test_senior_backend_python_not_rejected():
+    """Ensure backend/platform engineer titles stay clean."""
+    assert _check_ineligible(_job(title="Senior Backend Engineer, Python")) is None
+    assert _check_ineligible(_job(title="Staff Platform Engineer - Go")) is None
+    assert _check_ineligible(_job(title="Principal Software Engineer")) is None
+
+
 # ── Regional sales tags ─────────────────────────────────────────────
 
 def test_latam_in_title_rejected():
