@@ -288,20 +288,20 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
         if r["score"] is not None:
             conn.execute(
                 "UPDATE jobs SET fit_score = ?, score_reasoning = ?, scored_at = ?, "
-                "score_error = NULL, score_retry_count = 0, score_next_retry_at = NULL "
+                "score_error = NULL, score_attempts = 0, score_next_retry_at = NULL "
                 "WHERE url = ?",
                 (r["score"], f"{r['keywords']}\n{r['reasoning']}", now, r["url"]),
             )
         else:
             # LLM failure — keep fit_score NULL so it stays in pending_score
             row = conn.execute(
-                "SELECT COALESCE(score_retry_count, 0) FROM jobs WHERE url = ?", (r["url"],)
+                "SELECT COALESCE(score_attempts, 0) FROM jobs WHERE url = ?", (r["url"],)
             ).fetchone()
             retry_count = row[0] if row else 0
             if retry_count >= MAX_SCORE_RETRIES:
                 # Give up — write score_error but don't schedule another retry
                 conn.execute(
-                    "UPDATE jobs SET score_error = ?, score_retry_count = ?, "
+                    "UPDATE jobs SET score_error = ?, score_attempts = ?, "
                     "score_next_retry_at = NULL, scored_at = ? WHERE url = ?",
                     (r["error"], retry_count + 1, now, r["url"]),
                 )
@@ -311,7 +311,7 @@ def _flush_score_batch(conn, batch: list[dict], now: str) -> None:
                     datetime.now(timezone.utc) + timedelta(minutes=delay)
                 ).isoformat()
                 conn.execute(
-                    "UPDATE jobs SET score_error = ?, score_retry_count = ?, "
+                    "UPDATE jobs SET score_error = ?, score_attempts = ?, "
                     "score_next_retry_at = ?, scored_at = ? WHERE url = ?",
                     (r["error"], retry_count + 1, next_retry, now, r["url"]),
                 )

@@ -272,6 +272,9 @@ def init_db(db_path: Path | str | None = None) -> sqlite3.Connection:
     # Backfill apply categories for existing rows
     backfill_categories(conn)
 
+    # Backfill `state` for any jobs still at the default (added 2026-04-24).
+    backfill_states(conn)
+
     return conn
 
 
@@ -288,6 +291,10 @@ _ALL_COLUMNS: dict[str, str] = {
     "site": "TEXT",
     "strategy": "TEXT",
     "discovered_at": "TEXT",
+    "posted_at": "TEXT",                     # original posting date from the employer/board
+    # Canonical pipeline state. Enum enforced in Python (see VALID_STATES)
+    # rather than a SQL CHECK — SQLite can't easily add CHECKs post-hoc.
+    "state": "TEXT DEFAULT 'discovered'",
     # Company
     "company": "TEXT",
     # Enrichment
@@ -296,15 +303,14 @@ _ALL_COLUMNS: dict[str, str] = {
     "detail_scraped_at": "TEXT",
     "detail_error": "TEXT",
     "detail_error_category": "TEXT",       # 'expired' | 'retriable' | 'permanent'
-    "detail_retry_count": "INTEGER DEFAULT 0",
-    "detail_next_retry_at": "TEXT",        # ISO timestamp — when to retry
+    # (detail_retry_count → enrich_attempts, enrich_next_retry_at →
+    #  enrich_next_retry_at via _COLUMN_RENAMES below)
     # Scoring
     "fit_score": "INTEGER",
     "score_reasoning": "TEXT",
     "scored_at": "TEXT",
     "score_error": "TEXT",                 # set when all LLM providers failed; fit_score stays NULL
-    "score_retry_count": "INTEGER DEFAULT 0",
-    "score_next_retry_at": "TEXT",         # ISO timestamp — when to retry scoring
+    # (score_attempts → score_attempts via _COLUMN_RENAMES below)
     # Tailoring
     "tailored_resume_path": "TEXT",
     "tailored_at": "TEXT",
@@ -335,7 +341,15 @@ _ALL_COLUMNS: dict[str, str] = {
     "needs_human_url": "TEXT",
     "needs_human_instructions": "TEXT",
     # Apply category (semantic classification of apply outcome)
+    # DEPRECATED 2026-04-24: consolidated into the `state` column. Kept for
+    # backward compat; new code should use state + job_state_transitions.
     "apply_category": "TEXT",
+    # Renamed 2026-04-24 for cross-stage consistency
+    # (old names detail_retry_count / score_attempts are RENAMEd below).
+    "enrich_attempts": "INTEGER DEFAULT 0",
+    "enrich_next_retry_at": "TEXT",
+    "score_attempts": "INTEGER DEFAULT 0",
+    "score_next_retry_at": "TEXT",
 }
 
 
@@ -345,6 +359,10 @@ def ensure_columns(conn: sqlite3.Connection | None = None) -> list[str]:
     Reads the current table schema via PRAGMA table_info and compares against
     the full column registry. Any missing columns are added with ALTER TABLE.
 
+    Also handles one-shot renames defined in `_COLUMN_RENAMES`. SQLite 3.25+
+    supports ALTER TABLE ... RENAME COLUMN; we run the rename once if the
+    old name exists and the new one doesn't.
+
     This makes it safe to upgrade the database from any previous version --
     columns are only added, never removed or renamed.
 
@@ -352,13 +370,33 @@ def ensure_columns(conn: sqlite3.Connection | None = None) -> list[str]:
         conn: Database connection. Uses get_connection() if None.
 
     Returns:
-        List of column names that were added (empty if schema was already current).
+        List of column names that were added OR renamed (empty if current).
     """
     if conn is None:
         conn = get_connection()
 
     existing = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
-    added = []
+    changed: list[str] = []
+
+    # One-shot renames: old_name → new_name. Three cases:
+    #   1. only old exists  → plain RENAME
+    #   2. both old + new exist (ADD already fired) → copy values then DROP old
+    #   3. only new exists or neither exists → no-op (idempotent)
+    for old_name, new_name in _COLUMN_RENAMES.items():
+        if old_name in existing and new_name not in existing:
+            conn.execute(f"ALTER TABLE jobs RENAME COLUMN {old_name} TO {new_name}")
+            changed.append(f"{old_name}→{new_name}")
+            existing.discard(old_name)
+            existing.add(new_name)
+        elif old_name in existing and new_name in existing:
+            # Both present — move data from old to new then drop old.
+            conn.execute(
+                f"UPDATE jobs SET {new_name} = COALESCE({new_name}, {old_name}) "
+                f"WHERE {old_name} IS NOT NULL"
+            )
+            conn.execute(f"ALTER TABLE jobs DROP COLUMN {old_name}")
+            changed.append(f"{old_name}→{new_name} (merged)")
+            existing.discard(old_name)
 
     for col, dtype in _ALL_COLUMNS.items():
         if col not in existing:
@@ -367,12 +405,287 @@ def ensure_columns(conn: sqlite3.Connection | None = None) -> list[str]:
             if "PRIMARY KEY" in dtype:
                 continue
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {dtype}")
-            added.append(col)
+            changed.append(col)
 
-    if added:
+    # Ensure the job_state_transitions audit table exists (added 2026-04-24).
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS job_state_transitions (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_url    TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,
+            from_state TEXT,
+            to_state   TEXT NOT NULL,
+            at         TEXT NOT NULL,
+            reason     TEXT,
+            metadata   TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jst_job ON job_state_transitions(job_url)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jst_at ON job_state_transitions(at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_state ON jobs(state)")
+
+    if changed:
         conn.commit()
 
-    return added
+    return changed
+
+
+# One-shot column renames. When the old name exists but the new one doesn't,
+# ensure_columns() issues ALTER TABLE ... RENAME COLUMN once. After the
+# rename lands in prod, the entry can stay here indefinitely (idempotent).
+_COLUMN_RENAMES: dict[str, str] = {
+    "detail_retry_count": "enrich_attempts",
+    "detail_next_retry_at": "enrich_next_retry_at",
+    "score_retry_count": "score_attempts",
+    # score_next_retry_at keeps its name — no rename.
+}
+
+
+# ---------------------------------------------------------------------------
+# Pipeline state machine
+# ---------------------------------------------------------------------------
+#
+# Each job flows through a lifecycle captured by the `state` column on the
+# jobs table. Transitions are recorded in `job_state_transitions` for audit.
+# The valid transitions are enforced in `transition_state()` below.
+#
+# State taxonomy (23 states, one terminal cluster at the end):
+#
+#   discovered       → found by scraper, no description yet
+#   enriched         → full description loaded
+#   enrich_failed    → permanent enrichment failure (e.g. 404, bad_data)
+#   scored           → LLM scored with fit_score set
+#   score_failed     → LLM scoring failed after retries
+#   low_score        → score < threshold (effectively terminal)
+#   tailoring        → in progress
+#   tailored         → resume ready
+#   tailor_failed    → permanent tailoring failure
+#   cover_writing    → in progress
+#   cover_failed     → permanent cover failure
+#   ready_to_apply   → resume + cover + application_url all present
+#   applying         → worker holding this (in-flight)
+#   applied          → submission completed
+#   apply_failed     → permanent apply failure
+#   needs_human      → waiting for user intervention (HITL)
+#   manual_only      → user must apply manually (ATS blocks automation)
+#   responded        → confirmation email received
+#   interview        → got an interview
+#   offer            → received an offer
+#   rejected         → explicit rejection
+#   ghosted          → no response after follow-ups
+#   archived         → opted out / manually closed
+
+VALID_STATES: frozenset[str] = frozenset({
+    "discovered", "enriched", "enrich_failed",
+    "scored", "score_failed", "low_score",
+    "tailoring", "tailored", "tailor_failed",
+    "cover_writing", "cover_failed",
+    "ready_to_apply", "applying", "applied",
+    "apply_failed", "needs_human", "manual_only",
+    "responded", "interview", "offer",
+    "rejected", "ghosted", "archived",
+})
+
+VALID_TRANSITIONS: dict[str, frozenset[str]] = {
+    "discovered":     frozenset({"enriched", "enrich_failed", "archived"}),
+    "enriched":       frozenset({"scored", "score_failed", "archived"}),
+    "enrich_failed":  frozenset({"enriched", "archived"}),  # retriable
+    "scored":         frozenset({"low_score", "tailoring", "archived"}),
+    "score_failed":   frozenset({"scored", "archived"}),
+    "low_score":      frozenset({"archived", "tailoring"}),  # manual override
+    "tailoring":      frozenset({"tailored", "tailor_failed"}),
+    "tailor_failed":  frozenset({"tailoring", "archived"}),
+    "tailored":       frozenset({"cover_writing", "ready_to_apply", "archived"}),
+    "cover_writing":  frozenset({"ready_to_apply", "cover_failed"}),
+    "cover_failed":   frozenset({"cover_writing", "ready_to_apply", "archived"}),
+    "ready_to_apply": frozenset({"applying", "manual_only", "archived"}),
+    "applying":       frozenset({"applied", "apply_failed", "needs_human", "ready_to_apply"}),
+    "apply_failed":   frozenset({"applying", "manual_only", "archived"}),
+    "needs_human":    frozenset({"applying", "applied", "manual_only", "archived"}),
+    "manual_only":    frozenset({"applied", "archived"}),
+    "applied":        frozenset({"responded", "ghosted", "rejected", "archived"}),
+    "responded":      frozenset({"interview", "rejected", "ghosted"}),
+    "interview":      frozenset({"offer", "rejected", "ghosted"}),
+    "offer":          frozenset({"archived"}),  # accept or decline → archived
+    "rejected":       frozenset({"archived"}),
+    "ghosted":        frozenset({"archived", "responded"}),  # reopen possible
+    "archived":       frozenset(),
+}
+
+
+def transition_state(conn: sqlite3.Connection, job_url: str, to_state: str,
+                     reason: str | None = None,
+                     metadata: dict | None = None,
+                     force: bool = False) -> bool:
+    """Atomically transition a job to a new state and write an audit row.
+
+    Validates the transition against VALID_TRANSITIONS unless force=True.
+    Uses BEGIN IMMEDIATE so concurrent writers don't race on the state
+    column. Returns True on success, False if the transition is illegal.
+
+    metadata, when provided, is serialized to JSON and stored.
+    """
+    if to_state not in VALID_STATES:
+        raise ValueError(f"Unknown state: {to_state!r}")
+
+    row = conn.execute("SELECT state FROM jobs WHERE url = ?", (job_url,)).fetchone()
+    if not row:
+        raise ValueError(f"Job not found: {job_url}")
+    from_state = row["state"] if isinstance(row, sqlite3.Row) else row[0]
+
+    if not force:
+        allowed = VALID_TRANSITIONS.get(from_state, frozenset())
+        if to_state not in allowed and to_state != from_state:
+            _log.debug("Rejected transition %s → %s for %s (allowed: %s)",
+                       from_state, to_state, job_url[:60], sorted(allowed))
+            return False
+
+    now = datetime.now(timezone.utc).isoformat()
+    meta_json = None
+    if metadata:
+        import json as _json
+        meta_json = _json.dumps(metadata, default=str)
+
+    conn.execute("UPDATE jobs SET state = ? WHERE url = ?", (to_state, job_url))
+    conn.execute(
+        "INSERT INTO job_state_transitions (job_url, from_state, to_state, at, reason, metadata) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (job_url, from_state, to_state, now, reason, meta_json),
+    )
+    return True
+
+
+def current_state(conn: sqlite3.Connection, job_url: str) -> str | None:
+    """Return the job's current state, or None if the job doesn't exist."""
+    row = conn.execute("SELECT state FROM jobs WHERE url = ?", (job_url,)).fetchone()
+    if not row:
+        return None
+    return row["state"] if isinstance(row, sqlite3.Row) else row[0]
+
+
+def state_history(conn: sqlite3.Connection, job_url: str) -> list[dict]:
+    """Return all state transitions for a job, newest first."""
+    rows = conn.execute(
+        "SELECT from_state, to_state, at, reason, metadata "
+        "FROM job_state_transitions WHERE job_url = ? ORDER BY id DESC",
+        (job_url,),
+    ).fetchall()
+    return [dict(r) if isinstance(r, sqlite3.Row) else
+            {"from_state": r[0], "to_state": r[1], "at": r[2],
+             "reason": r[3], "metadata": r[4]}
+            for r in rows]
+
+
+def backfill_states(conn: sqlite3.Connection | None = None) -> dict[str, int]:
+    """Derive `state` for every job at the default ('discovered') value.
+
+    Runs the CASE mapping once. Seeds a single row in job_state_transitions
+    per migrated job, with from_state=NULL and reason='migrated 2026-04-24'.
+
+    Idempotent: only touches jobs whose state is still at the default
+    AND haven't been seeded into the transitions table yet.
+    """
+    if conn is None:
+        conn = get_connection()
+
+    # Find jobs that still need a derived state. We identify "still default"
+    # as state='discovered' AND no row in job_state_transitions for that
+    # job (i.e., never been touched by the state machine).
+    candidates = conn.execute("""
+        SELECT j.url,
+               j.full_description IS NOT NULL AS has_desc,
+               j.fit_score,
+               j.score_error,
+               j.tailored_resume_path,
+               j.cover_letter_path,
+               j.application_url,
+               j.apply_status,
+               j.apply_category,
+               j.tracking_status,
+               j.detail_error_category,
+               j.needs_human_reason
+          FROM jobs j
+          LEFT JOIN job_state_transitions jst ON jst.job_url = j.url
+         WHERE j.state = 'discovered' AND jst.id IS NULL
+    """).fetchall()
+
+    counts: dict[str, int] = {}
+    now = datetime.now(timezone.utc).isoformat()
+
+    for r in candidates:
+        url = r["url"] if isinstance(r, sqlite3.Row) else r[0]
+        has_desc = r["has_desc"] if isinstance(r, sqlite3.Row) else r[1]
+        fit_score = r["fit_score"] if isinstance(r, sqlite3.Row) else r[2]
+        score_error = r["score_error"] if isinstance(r, sqlite3.Row) else r[3]
+        tailored_path = r["tailored_resume_path"] if isinstance(r, sqlite3.Row) else r[4]
+        cover_path = r["cover_letter_path"] if isinstance(r, sqlite3.Row) else r[5]
+        app_url = r["application_url"] if isinstance(r, sqlite3.Row) else r[6]
+        apply_status = r["apply_status"] if isinstance(r, sqlite3.Row) else r[7]
+        apply_cat = r["apply_category"] if isinstance(r, sqlite3.Row) else r[8]
+        tracking = r["tracking_status"] if isinstance(r, sqlite3.Row) else r[9]
+        detail_err_cat = r["detail_error_category"] if isinstance(r, sqlite3.Row) else r[10]
+        needs_human_reason = r["needs_human_reason"] if isinstance(r, sqlite3.Row) else r[11]
+
+        # Precedence (top overrides bottom):
+        #   1. tracking-state terminal outcomes (interview/offer/rejected/ghosted)
+        #   2. apply-stage outcomes (applied/failed/manual/needs_human/applying)
+        #   3. apply_category-driven archive states
+        #   4. low_score — below threshold disqualifies regardless of artifacts
+        #   5. ready_to_apply / tailored (artifact presence)
+        #   6. scored / score_failed / enrich_failed / enriched / discovered
+        if tracking == "interview":
+            state = "interview"
+        elif tracking == "rejection":
+            state = "rejected"
+        elif tracking == "ghosted":
+            state = "ghosted"
+        elif tracking == "confirmation":
+            state = "responded"
+        elif apply_status == "applied":
+            state = "applied"
+        elif apply_status == "failed":
+            state = "apply_failed"
+        elif apply_status == "manual":
+            state = "manual_only"
+        elif apply_status == "needs_human" or needs_human_reason:
+            state = "needs_human"
+        elif apply_status == "in_progress":
+            state = "applying"
+        elif apply_cat == "archived_expired" or apply_cat == "archived_platform":
+            state = "archived"
+        # Low-score precedence is HIGHER than tailored/ready_to_apply because
+        # a job below threshold is not apply-eligible even if artifacts exist
+        # (this happens when the score threshold tightened 7 → 8 after tailoring).
+        elif fit_score is not None and fit_score < 8:
+            state = "low_score"
+        elif tailored_path and cover_path and app_url:
+            state = "ready_to_apply"
+        elif tailored_path:
+            state = "tailored"
+        elif fit_score is not None:
+            state = "scored"
+        elif score_error:
+            state = "score_failed"
+        elif detail_err_cat in ("expired", "permanent"):
+            state = "enrich_failed"
+        elif has_desc:
+            state = "enriched"
+        else:
+            state = "discovered"
+
+        counts[state] = counts.get(state, 0) + 1
+
+        conn.execute("UPDATE jobs SET state = ? WHERE url = ?", (state, url))
+        conn.execute(
+            "INSERT INTO job_state_transitions "
+            "(job_url, from_state, to_state, at, reason, metadata) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (url, None, state, now, "migrated 2026-04-24", None),
+        )
+
+    if candidates:
+        conn.commit()
+
+    return counts
 
 
 # ---------------------------------------------------------------------------
@@ -1219,13 +1532,13 @@ def get_jobs_by_stage(conn: sqlite3.Connection | None = None,
         "pending_detail": (
             "detail_scraped_at IS NULL "
             "OR (detail_error_category = 'retriable' "
-            "    AND (detail_next_retry_at IS NULL OR detail_next_retry_at <= datetime('now')))"
+            "    AND (enrich_next_retry_at IS NULL OR enrich_next_retry_at <= datetime('now')))"
         ),
         "enriched": "full_description IS NOT NULL",
         "pending_score": (
             "full_description IS NOT NULL AND ("
             "  (fit_score IS NULL AND score_error IS NULL) "
-            "  OR (score_error IS NOT NULL AND score_retry_count < 5 "
+            "  OR (score_error IS NOT NULL AND score_attempts < 5 "
             "      AND (score_next_retry_at IS NULL OR score_next_retry_at <= datetime('now')))"
             ")"
         ),

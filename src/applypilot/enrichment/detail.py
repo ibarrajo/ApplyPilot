@@ -745,8 +745,8 @@ def scrape_site_batch(
                     conn.execute(
                         "UPDATE jobs SET full_description = ?, application_url = ?, "
                         "detail_scraped_at = ?, detail_error = NULL, "
-                        "detail_error_category = NULL, detail_retry_count = 0, "
-                        "detail_next_retry_at = NULL WHERE url = ?",
+                        "detail_error_category = NULL, enrich_attempts = 0, "
+                        "enrich_next_retry_at = NULL WHERE url = ?",
                         (result.get("full_description"), result.get("application_url"), now, url),
                     )
                 else:
@@ -754,13 +754,13 @@ def scrape_site_batch(
                     error_msg = result.get("error", "unknown")
                     # Fetch current retry count before classifying
                     row = conn.execute(
-                        "SELECT COALESCE(detail_retry_count, 0) FROM jobs WHERE url = ?", (url,)
+                        "SELECT COALESCE(enrich_attempts, 0) FROM jobs WHERE url = ?", (url,)
                     ).fetchone()
                     retry_count = row[0] if row else 0
                     category, next_retry_at = _classify_detail_error(error_msg, retry_count)
                     conn.execute(
                         "UPDATE jobs SET detail_error = ?, detail_error_category = ?, "
-                        "detail_retry_count = ?, detail_next_retry_at = ?, "
+                        "enrich_attempts = ?, enrich_next_retry_at = ?, "
                         "detail_scraped_at = ? WHERE url = ?",
                         (error_msg, category, retry_count + 1, next_retry_at, now, url),
                     )
@@ -800,7 +800,7 @@ def _run_detail_scraper(
         f"WHERE ({skip_filter}) AND ("
         "  detail_scraped_at IS NULL "
         "  OR (detail_error_category = 'retriable' "
-        "      AND (detail_next_retry_at IS NULL OR detail_next_retry_at <= datetime('now')))"
+        "      AND (enrich_next_retry_at IS NULL OR enrich_next_retry_at <= datetime('now')))"
         ")"
     )
     rows = conn.execute(
@@ -924,7 +924,7 @@ def stream_detail(
                 f"WHERE ({skip_filter}) AND ("
                 "  detail_scraped_at IS NULL "
                 "  OR (detail_error_category = 'retriable' "
-                "      AND (detail_next_retry_at IS NULL OR detail_next_retry_at <= datetime('now')))"
+                "      AND (enrich_next_retry_at IS NULL OR enrich_next_retry_at <= datetime('now')))"
                 ") "
                 "ORDER BY site, discovered_at DESC LIMIT 200"
             ).fetchall()
