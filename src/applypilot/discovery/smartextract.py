@@ -28,7 +28,7 @@ from playwright.sync_api import sync_playwright
 
 from applypilot import config
 from applypilot.config import CONFIG_DIR
-from applypilot.database import init_db, get_stats
+from applypilot.database import init_db, get_stats, commit_with_retry
 from applypilot.llm import get_client
 
 log = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ def _store_jobs_filtered(
 
     if filtered:
         log.info("Filtered %d jobs (wrong location)", filtered)
-    conn.commit()
+    commit_with_retry(conn)
     return new, existing
 
 
