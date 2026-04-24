@@ -199,7 +199,7 @@ Two YAML files in `docs/` catalog ~120 Seattle-area employers (Downtown / SLU / 
 **TODOs to integrate these into discovery:**
 
 1. **Workday scraping (quick win, ~1h):** verify tenant subdomains for the ~14 Workday-hosted companies and add to `src/applypilot/config/employers.yaml` following the existing pattern (`tenant`, `site_id`, `base_url`). Candidates: Remitly, Okta, Expedia Group, Zillow Group, F5, Salesforce, Adobe Seattle, Apptio, Lululemon, Prologis Tech, Qualtrics, SoFi.
-2. **Greenhouse scraper (medium, sub-project):** ~20 Tier-1 companies use Greenhouse (Temporal, Pulumi, Anduril, Carta, Smartsheet, Tanium, OfferUp, ExtraHop, Databricks, Axon, Sprout Social, Stackline, Yoodli, Ai2, etc.). One scraper unlocks all of them. Greenhouse has a public JSON API at `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs`.
+2. **Greenhouse scraper — ✅ shipped 2026-04-24 (commit f7cba79).** `src/applypilot/discovery/greenhouse.py` hits the public board API at `boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true`. Registry at `src/applypilot/config/greenhouse_employers.yaml` (13 verified slugs: Temporal, Pulumi, Anduril, Carta, Smartsheet, OfferUp, ExtraHop, Tanium, Databricks, Axon, Sprout Social, Stackline, Yoodli). First run pulled 511 jobs. To add more: identify slug (last path segment of careers URL) and append to the YAML. Ai2 and Echodyne aren't on Greenhouse — still need investigation.
 3. **Lever scraper (small, sub-project):** Stripe, Highspot, Outreach, Rover. Lever API: `https://api.lever.co/v0/postings/{slug}?mode=json`.
 4. **Ashby scraper (small, sub-project):** MotherDuck, Statsig, Deepgram, Common Room, DevZero, Impart Security, Clarify. Ashby has a private API — may need Playwright scrape.
 
