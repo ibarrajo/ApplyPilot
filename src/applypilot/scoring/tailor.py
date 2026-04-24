@@ -79,7 +79,7 @@ You MAY add 2-3 closely related tools (Kubernetes if Docker, Terraform if AWS, R
 
 ## TAILORING RULES:
 
-TITLE: Match the target role. Keep seniority (Senior/Lead/Staff). Drop company suffixes and team names.
+TITLE: Use the job title verbatim from the posting (Jobscan: 10.6x interview-rate lift). Only strip internal-req prefixes like "JREQ197053 -" and trailing team tags like "(Payments Team)". Keep the full role name including specialty — "Staff Software Engineer, AI Platform" stays as-is; "Senior Backend Engineer - Python" stays as-is.
 
 SUMMARY: Rewrite from scratch. Lead with the 1-2 skills that matter most for THIS role. Sound like someone who's done this job.
 

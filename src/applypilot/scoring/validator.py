@@ -315,12 +315,12 @@ def validate_cover_letter(text: str) -> dict:
         warnings.append(f"Banned words (style): {', '.join(found[:5])}")
 
     # 3. Word count — target 250-400 per Jobscan (3.4x interview-rate sweet spot).
-    # Allow a small buffer on each side: [200, 450]. Below 200 is too thin;
-    # above 450 is too long for a one-page cover letter.
+    # Enforce Jobscan's 250-word floor hard; give a small buffer above the 400
+    # ceiling so a letter barely over target still passes.
     words = len(text.split())
     if words > 450:
         errors.append(f"Too long ({words} words). Target 250-400 per Jobscan.")
-    if words < 200:
+    if words < 250:
         errors.append(f"Too short ({words} words). Target 250-400 per Jobscan.")
 
     # 4. LLM self-talk

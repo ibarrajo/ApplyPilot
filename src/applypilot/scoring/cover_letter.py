@@ -61,15 +61,15 @@ def _build_cover_letter_prompt(profile: dict) -> str:
 
     return f"""Write a cover letter for {sign_off_name}. The goal is to get an interview.
 
-STRUCTURE: 4 paragraphs. 250-400 words (Jobscan 3.4x interview-rate sweet spot). Every sentence must earn its place.
+STRUCTURE: 4 paragraphs. TARGET 300-400 words; MINIMUM 260 words (Jobscan 3.4x interview-rate sweet spot is 250-400). Letters under 260 words get rejected automatically.
 
-PARAGRAPH 1 — HOOK (3-4 sentences): Open with a specific thing YOU built that solves THEIR problem. Identify the problem they're hiring to solve (infer from the job description) and name the work you've done that directly addresses it. Not "I'm excited about this role." Not "This role aligns with my experience." Start with the work.
+PARAGRAPH 1 — HOOK (4-6 sentences, ~80 words): Open with a specific thing YOU built that solves THEIR problem. Identify the problem they're hiring to solve (infer from the job description) and name the work you've done that directly addresses it. Include enough context that the reader understands the scope and impact. Not "I'm excited about this role." Not "This role aligns with my experience." Start with the work.
 
-PARAGRAPH 2 — EVIDENCE (3-5 sentences): Pick 2 achievements from the resume that are MOST relevant to THIS job. Use concrete numbers. Frame each as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
+PARAGRAPH 2 — EVIDENCE (4-6 sentences, ~120 words): Pick 2 achievements from the resume that are MOST relevant to THIS job. For each, name the problem, the concrete action you took (specific tools, architecture decisions), and the quantified outcome. Use numbers. Frame each as solving their problem, not listing your accomplishments.{projects_hint}{metrics_hint}
 
-PARAGRAPH 3 — COMPANY FIT (2-3 sentences): Reference one specific thing about the company from the job description (a product, a technical challenge, a team structure). Connect it to your experience with a concrete parallel, not a generic nod.
+PARAGRAPH 3 — COMPANY FIT (3-4 sentences, ~70 words): Reference one specific thing about the company from the job description (a product, a technical challenge, a team structure). Connect it to your experience with a concrete parallel, not a generic nod. Show you've read the posting and that you've solved a similar shape of problem.
 
-PARAGRAPH 4 — CLOSE (1-2 sentences): Short CTA. "Happy to walk through any of this in more detail." or "Let's discuss specifics." Nothing else, then sign off.
+PARAGRAPH 4 — CLOSE (2 sentences, ~30 words): Short CTA pointing to a next step plus the sign-off. "Happy to walk through the migration details or the on-call setup." Specific, not generic. Then sign off.
 
 BANNED WORDS/PHRASES (using ANY of these = instant rejection):
 "resonated", "aligns with", "passionate", "eager", "eager to", "excited to apply", "I am confident",
