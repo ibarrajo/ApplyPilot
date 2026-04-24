@@ -616,6 +616,8 @@ def _mark_enrich_result(
     error: str | None,
     tier: int | None,
     retry_count: int,
+    category: str | None = None,
+    next_retry_at: str | None = None,
     now: str | None = None,
 ) -> None:
     """Persist one enrichment result and emit a state transition.
@@ -625,7 +627,13 @@ def _mark_enrich_result(
 
     ``status`` should be one of: ``"ok"``, ``"partial"``, ``"error"``.
     Retriable errors do NOT emit a transition (job stays in ``discovered``).
+
+    ``category`` and ``next_retry_at`` may be pre-computed by the caller
+    (e.g. to log them before writing).  When absent they are derived
+    internally via ``_classify_detail_error``.
     """
+    assert status in ("ok", "partial", "error"), f"Unexpected status: {status!r}"
+
     if now is None:
         now = datetime.now(timezone.utc).isoformat()
 
@@ -645,7 +653,8 @@ def _mark_enrich_result(
         )
     else:
         error_msg = error or "unknown"
-        category, next_retry_at = _classify_detail_error(error_msg, retry_count)
+        if category is None or next_retry_at is None:
+            category, next_retry_at = _classify_detail_error(error_msg, retry_count)
         conn.execute(
             "UPDATE jobs SET detail_error = ?, detail_error_category = ?, "
             "enrich_attempts = ?, enrich_next_retry_at = ?, "
@@ -829,6 +838,8 @@ def scrape_site_batch(
                         error=error_msg,
                         tier=tier,
                         retry_count=retry_count,
+                        category=_cat,
+                        next_retry_at=_next,
                         now=now,
                     )
 

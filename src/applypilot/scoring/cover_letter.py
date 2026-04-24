@@ -236,10 +236,8 @@ def _mark_cover_result(
     Extracted from ``_flush_cover_results`` so tests can call it directly.
     Transitions to ``ready_to_apply`` on success, ``cover_failed`` on failure.
     """
-    from datetime import datetime, timezone as _tz
-
     if now is None:
-        now = datetime.now(_tz.utc).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
 
     if path:
         conn.execute(

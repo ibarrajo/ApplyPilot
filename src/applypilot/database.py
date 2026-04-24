@@ -489,11 +489,11 @@ VALID_TRANSITIONS: dict[str, frozenset[str]] = {
     "discovered":     frozenset({"enriched", "enrich_failed", "archived"}),
     "enriched":       frozenset({"scored", "score_failed", "archived"}),
     "enrich_failed":  frozenset({"enriched", "archived"}),  # retriable
-    "scored":         frozenset({"low_score", "tailoring", "archived"}),
+    "scored":         frozenset({"low_score", "tailoring", "tailored", "tailor_failed", "archived"}),
     "score_failed":   frozenset({"scored", "archived"}),
     "low_score":      frozenset({"archived", "tailoring"}),  # manual override
     "tailoring":      frozenset({"tailored", "tailor_failed"}),
-    "tailor_failed":  frozenset({"tailoring", "archived"}),
+    "tailor_failed":  frozenset({"tailoring", "tailored", "archived"}),
     "tailored":       frozenset({"cover_writing", "ready_to_apply", "archived"}),
     "cover_writing":  frozenset({"ready_to_apply", "cover_failed"}),
     "cover_failed":   frozenset({"cover_writing", "ready_to_apply", "archived"}),

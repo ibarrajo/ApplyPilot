@@ -12,6 +12,7 @@ to avoid apologetic spirals.
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -616,22 +617,19 @@ def _mark_tailor_result(
         now = datetime.now(timezone.utc).isoformat()
 
     if status == "approved":
-        # Write path first, then increment counter so a later flush error
-        # cannot lose the counter without losing the path too.
+        # Atomic: write path AND increment counter in one UPDATE.
+        # transition_state fires after — if it raises (rare), path+count are
+        # already written so state drift is recoverable via backfill.
         conn.execute(
-            "UPDATE jobs SET tailored_resume_path=?, tailored_at=? WHERE url=?",
+            "UPDATE jobs SET tailored_resume_path=?, tailored_at=?, "
+            "tailor_attempts=COALESCE(tailor_attempts,0)+1 WHERE url=?",
             (path, now, url),
         )
         transition_state(
             conn, url, "tailored",
             reason="tailored OK",
-            metadata={"attempts": attempts, "path": path},
+            metadata={"attempts": attempts, "filename": os.path.basename(path) if path else None},
             force=True,
-        )
-        conn.execute(
-            "UPDATE jobs SET tailor_attempts = COALESCE(tailor_attempts, 0) + 1 "
-            "WHERE url = ?",
-            (url,),
         )
     else:
         conn.execute(

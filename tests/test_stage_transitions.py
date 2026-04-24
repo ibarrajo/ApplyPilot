@@ -307,3 +307,34 @@ def test_enrich_partial_success_transitions_to_enriched(tmp_db, seed_job):
     conn.commit()
 
     assert current_state(conn, url) == "enriched"
+
+
+# ---------------------------------------------------------------------------
+# A4 — database.py: VALID_TRANSITIONS direct edges (Fix 3)
+# ---------------------------------------------------------------------------
+
+def test_scored_to_tailored_allowed_without_force(tmp_db, seed_job):
+    """scored → tailored must be a legal direct edge (no force needed)."""
+    conn = tmp_db()
+    url = _seed_with_state(conn, seed_job, "ST1", "scored",
+                           fit_score=9, full_description="x" * 300)
+    assert transition_state(conn, url, "tailored", reason="direct") is True
+    assert current_state(conn, url) == "tailored"
+
+
+def test_scored_to_tailor_failed_allowed_without_force(tmp_db, seed_job):
+    """scored → tailor_failed must be a legal direct edge (no force needed)."""
+    conn = tmp_db()
+    url = _seed_with_state(conn, seed_job, "ST2", "scored",
+                           fit_score=9, full_description="x" * 300)
+    assert transition_state(conn, url, "tailor_failed", reason="direct") is True
+    assert current_state(conn, url) == "tailor_failed"
+
+
+def test_tailor_failed_to_tailored_allowed_without_force(tmp_db, seed_job):
+    """tailor_failed → tailored must be a legal direct edge (retry success)."""
+    conn = tmp_db()
+    url = _seed_with_state(conn, seed_job, "ST3", "tailor_failed",
+                           fit_score=9, full_description="x" * 300)
+    assert transition_state(conn, url, "tailored", reason="retry success") is True
+    assert current_state(conn, url) == "tailored"
