@@ -201,13 +201,35 @@ def store_jobspy_results(conn: sqlite3.Connection, df, source_label: str) -> tup
         # Extract apply URL if JobSpy provided it
         apply_url = str(row.get("job_url_direct", "")) if str(row.get("job_url_direct", "")) != "nan" else None
 
+        # Capture posting date if available
+        date_posted_raw = row.get("date_posted")
+        posted_at = None
+        if date_posted_raw and str(date_posted_raw) not in ("nan", "None", ""):
+            try:
+                from datetime import date
+                dp = date_posted_raw
+                if hasattr(dp, "isoformat"):
+                    posted_at = dp.isoformat()
+                else:
+                    posted_at = str(dp)
+            except Exception:
+                posted_at = None
+
+        initial_state = "enriched" if full_description else "discovered"
+
         try:
             conn.execute(
                 "INSERT INTO jobs (url, title, salary, description, location, site, strategy, discovered_at, "
-                "full_description, application_url, detail_scraped_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "full_description, application_url, detail_scraped_at, posted_at, state) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (url, title, salary, description, location_str, site_label, strategy, now,
-                 full_description, apply_url, detail_scraped_at),
+                 full_description, apply_url, detail_scraped_at, posted_at, initial_state),
+            )
+            conn.execute(
+                "INSERT INTO job_state_transitions "
+                "(job_url, from_state, to_state, at, reason, metadata) "
+                "VALUES (?, NULL, ?, ?, ?, ?)",
+                (url, initial_state, now, f"discovered via {strategy}", None),
             )
             new += 1
         except sqlite3.IntegrityError:

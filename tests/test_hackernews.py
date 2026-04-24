@@ -17,11 +17,24 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 def _make_db() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
     conn.execute(
         "CREATE TABLE jobs ("
         "  url TEXT PRIMARY KEY, title TEXT, salary TEXT, description TEXT,"
         "  location TEXT, site TEXT, strategy TEXT, discovered_at TEXT,"
-        "  full_description TEXT, detail_scraped_at TEXT"
+        "  full_description TEXT, detail_scraped_at TEXT,"
+        "  state TEXT DEFAULT 'discovered'"
+        ")"
+    )
+    conn.execute(
+        "CREATE TABLE job_state_transitions ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  job_url TEXT NOT NULL REFERENCES jobs(url) ON DELETE CASCADE,"
+        "  from_state TEXT,"
+        "  to_state TEXT NOT NULL,"
+        "  at TEXT NOT NULL,"
+        "  reason TEXT,"
+        "  metadata TEXT"
         ")"
     )
     conn.commit()

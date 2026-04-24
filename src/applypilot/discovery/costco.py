@@ -158,14 +158,22 @@ def _insert_jobs(conn: sqlite3.Connection, jobs: list[dict]) -> tuple[int, int]:
             continue
         full_description = job.get("full_description")
         detail_scraped_at = now if full_description else None
+        posted_at = job.get("posted_at") or None
+        initial_state = "enriched" if full_description else "discovered"
         try:
             conn.execute(
                 "INSERT INTO jobs (url, title, salary, description, location, site, strategy, "
-                "discovered_at, full_description, application_url, detail_scraped_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "discovered_at, full_description, application_url, detail_scraped_at, posted_at, state) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (url, job.get("title"), None, job.get("description"), job.get("location"),
                  "Costco", "costco_careers", now, full_description, job.get("application_url"),
-                 detail_scraped_at),
+                 detail_scraped_at, posted_at, initial_state),
+            )
+            conn.execute(
+                "INSERT INTO job_state_transitions "
+                "(job_url, from_state, to_state, at, reason, metadata) "
+                "VALUES (?, NULL, ?, ?, ?, ?)",
+                (url, initial_state, now, "discovered via costco_careers", None),
             )
             new += 1
         except sqlite3.IntegrityError:

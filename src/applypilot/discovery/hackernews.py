@@ -199,13 +199,22 @@ def _store_hn_job(conn: sqlite3.Connection, job: dict, thread_title: str) -> boo
     if contact and contact != url:
         description += f"\n\nContact: {contact}"
 
+    # HN comments are always the full text — enrich immediately when present.
+    initial_state = "enriched" if description else "discovered"
+
     try:
         conn.execute(
             "INSERT INTO jobs (url, title, salary, description, location, site, strategy, "
-            "discovered_at, full_description, detail_scraped_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "discovered_at, full_description, detail_scraped_at, state) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (url, title, salary, description, location,
-             f"HN: {company}", "hackernews", now, description, now),
+             f"HN: {company}", "hackernews", now, description, now, initial_state),
+        )
+        conn.execute(
+            "INSERT INTO job_state_transitions "
+            "(job_url, from_state, to_state, at, reason, metadata) "
+            "VALUES (?, NULL, ?, ?, ?, ?)",
+            (url, initial_state, now, "discovered via hackernews", None),
         )
         commit_with_retry(conn)
         return True
