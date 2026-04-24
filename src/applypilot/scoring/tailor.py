@@ -446,6 +446,35 @@ def tailor_resume(
 
 # ── Batch Entry Point ────────────────────────────────────────────────────
 
+# Strategies where `site` column holds the actual employer (not an aggregator).
+# When a job has NULL/empty `company`, these strategies let us fall back to
+# `site` as the company-key for caps.
+DIRECT_EMPLOYER_STRATEGIES = frozenset({
+    "greenhouse_api", "workday_api", "lever_api", "ashby_api",
+    "amazon_jobs", "microsoft_careers", "apple_jobs", "google_careers",
+    "meta_careers", "twilio_greenhouse",
+})
+
+
+def resolve_company_key(job: dict) -> str | None:
+    """Return a lowercase company key for cap logic, or None if exempt.
+
+    Prefers the extracted `company` column. Falls back to `site` for
+    direct-employer scrapers (Greenhouse/Workday/etc.) where `site` holds
+    the real employer name. Aggregator sites (LinkedIn/Indeed/SimplyHired)
+    with NULL company are exempt — we can't bucket them accurately.
+    """
+    co = (job.get("company") or "").strip().lower()
+    if co:
+        return co
+    strategy = (job.get("strategy") or "").lower()
+    if strategy in DIRECT_EMPLOYER_STRATEGIES:
+        site = (job.get("site") or "").strip().lower()
+        if site:
+            return site
+    return None
+
+
 def _name_parts(profile: dict) -> tuple[str, str]:
     """Return (first, last) name parts from profile, sanitized for filenames.
 
@@ -594,10 +623,68 @@ def run_tailoring(min_score: int | None = None, limit: int = 20, workers: int = 
     jobs = get_jobs_by_stage(conn=conn, stage="pending_tailor",
                              min_score=min_score, max_age_days=max_age_days,
                              limit=limit)
+
+    # Per-company tailor cap: don't tailor more than N resumes per company
+    # in the fresh window. Existing tailored docs count against the cap.
+    #
+    # Company key resolution:
+    #   1. Prefer `company` column (extracted from application_url domain).
+    #   2. If NULL, fall back to `site` ONLY for direct-employer scrapers
+    #      (greenhouse_api, workday_api) where `site` is the actual employer.
+    #   3. For aggregator sites (linkedin, indeed, simplyhired, etc.) the
+    #      `site` is not the employer — exempt those from the cap since we
+    #      can't accurately bucket them.
+    cap = DEFAULTS["max_tailored_per_company"]
+
+    # (resolve_company_key is defined at module level for reuse)
+
+    existing_rows = conn.execute("""
+        SELECT LOWER(company) AS key, COUNT(*) AS n
+        FROM jobs
+        WHERE tailored_resume_path IS NOT NULL
+          AND company IS NOT NULL AND TRIM(company) != ''
+          AND discovered_at > datetime('now', ?)
+        GROUP BY key
+        UNION ALL
+        SELECT LOWER(site) AS key, COUNT(*) AS n
+        FROM jobs
+        WHERE tailored_resume_path IS NOT NULL
+          AND (company IS NULL OR TRIM(company) = '')
+          AND strategy IN ('greenhouse_api', 'workday_api', 'lever_api',
+                           'ashby_api', 'amazon_jobs', 'microsoft_careers',
+                           'apple_jobs', 'google_careers')
+          AND site IS NOT NULL AND TRIM(site) != ''
+          AND discovered_at > datetime('now', ?)
+        GROUP BY key
+    """, (f"-{max_age_days or DEFAULTS['max_job_age_days']} days",
+          f"-{max_age_days or DEFAULTS['max_job_age_days']} days")).fetchall()
+    existing: dict[str, int] = {}
+    for r in existing_rows:
+        existing[r["key"]] = existing.get(r["key"], 0) + r["n"]
+
+    added_per_company: dict[str, int] = {}
+    capped_jobs: list[dict] = []
+    skipped_by_cap = 0
+    for job in jobs:
+        key = resolve_company_key(job)
+        if key is None:
+            capped_jobs.append(job)  # exempt (aggregator with no company)
+            continue
+        already = existing.get(key, 0) + added_per_company.get(key, 0)
+        if already >= cap:
+            skipped_by_cap += 1
+            continue
+        capped_jobs.append(job)
+        added_per_company[key] = added_per_company.get(key, 0) + 1
+    if skipped_by_cap:
+        log.info("Tailor cap: skipped %d job(s) where company is at/over %d tailored.",
+                 skipped_by_cap, cap)
+    jobs = capped_jobs
+
     conn.commit()  # Close read transaction before long LLM phase
 
     if not jobs:
-        log.info("No untailored jobs with score >= %d.", min_score)
+        log.info("No untailored jobs with score >= %d (after per-company cap).", min_score)
         return {"approved": 0, "failed": 0, "errors": 0, "elapsed": 0.0}
 
     TAILORED_DIR.mkdir(parents=True, exist_ok=True)

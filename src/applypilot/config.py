@@ -179,8 +179,9 @@ def load_base_urls() -> dict[str, str | None]:
 DEFAULTS = {
     "min_score": 8,                           # was 7; per 2026-04-23 funnel spec
     "max_job_age_days": 14,                   # stale-job cutoff (discovered_at)
-    "max_in_flight_per_company": 3,           # hard cap per company
+    "max_in_flight_per_company": 3,           # hard cap per company (apply-time)
     "in_flight_window_days": 30,              # window for in-flight count
+    "max_tailored_per_company": 10,           # cap per company at tailor stage
     "max_apply_attempts": 3,
     "max_tailor_attempts": 5,
     "poll_interval": 60,

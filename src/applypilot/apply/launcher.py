@@ -1176,7 +1176,8 @@ def acquire_job(target_url: str | None = None,
             candidates = conn.execute(f"""
                 SELECT j.url, j.title, j.site, j.application_url,
                        j.tailored_resume_path, j.fit_score, j.location,
-                       j.full_description, j.cover_letter_path, j.company
+                       j.full_description, j.cover_letter_path, j.company,
+                       j.strategy
                 FROM jobs j
                 WHERE j.tailored_resume_path IS NOT NULL
                   AND (j.apply_status IS NULL OR j.apply_status = 'failed')
@@ -1192,26 +1193,30 @@ def acquire_job(target_url: str | None = None,
             """, (min_score, *company_excl_params, *age_params)).fetchall()
 
             # Build in-flight buckets once, reuse for every candidate.
+            # Use resolve_company_key so Greenhouse/Workday jobs (NULL company,
+            # employer name in `site`) bucket correctly.
+            from applypilot.scoring.tailor import resolve_company_key
             in_flight = get_in_flight_by_company(conn)
             now_utc = datetime.now(timezone.utc)
 
-            def over_cap(company: str | None) -> bool:
-                if not company or not company.strip():
+            def over_cap(job: dict) -> bool:
+                key = resolve_company_key(job)
+                if not key:
                     return False
-                cap, window = _cfg.get_company_limit(company)
+                cap, window = _cfg.get_company_limit(key)
                 if cap < 0:
                     return False
                 if cap == 0:
                     return True
                 cutoff = (now_utc - timedelta(days=window)).isoformat()
-                count = sum(1 for ts in in_flight.get(company.lower(), [])
+                count = sum(1 for ts in in_flight.get(key, [])
                             if ts and ts > cutoff)
                 return count >= cap
 
             # Pick first candidate whose company is under cap AND ATS lane is free.
             row = None
             for cand in candidates:
-                if over_cap(cand["company"]):
+                if over_cap(dict(cand)):
                     continue
                 ats = detect_ats(cand["application_url"] or cand["url"] or "")
                 if ats is not None and ats in active_ats:

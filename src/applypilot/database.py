@@ -1342,6 +1342,12 @@ def get_in_flight_by_company(conn: sqlite3.Connection | None = None,
     if conn is None:
         conn = get_connection()
 
+    # Two sources for the company key:
+    # 1. `company` column (extracted from application_url) when populated.
+    # 2. `site` column, only for direct-employer scrapers (Greenhouse,
+    #    Workday, Lever, Ashby, Amazon, etc.) where `site` == employer name.
+    # Aggregator sites (LinkedIn, Indeed, SimplyHired) with NULL company
+    # are excluded — we can't identify the real employer.
     rows = conn.execute("""
         SELECT LOWER(company) AS co,
                COALESCE(applied_at, last_attempted_at) AS ts
@@ -1350,7 +1356,20 @@ def get_in_flight_by_company(conn: sqlite3.Connection | None = None,
           AND company IS NOT NULL AND TRIM(company) != ''
           AND COALESCE(applied_at, last_attempted_at) IS NOT NULL
           AND COALESCE(applied_at, last_attempted_at) > datetime('now', ?)
-    """, (f"-{max_window_days} days",)).fetchall()
+        UNION ALL
+        SELECT LOWER(site) AS co,
+               COALESCE(applied_at, last_attempted_at) AS ts
+        FROM jobs
+        WHERE apply_status IN ('applied', 'in_progress', 'needs_human')
+          AND (company IS NULL OR TRIM(company) = '')
+          AND strategy IN ('greenhouse_api', 'workday_api', 'lever_api',
+                           'ashby_api', 'amazon_jobs', 'microsoft_careers',
+                           'apple_jobs', 'google_careers', 'meta_careers',
+                           'twilio_greenhouse')
+          AND site IS NOT NULL AND TRIM(site) != ''
+          AND COALESCE(applied_at, last_attempted_at) IS NOT NULL
+          AND COALESCE(applied_at, last_attempted_at) > datetime('now', ?)
+    """, (f"-{max_window_days} days", f"-{max_window_days} days")).fetchall()
 
     from collections import defaultdict
     out: dict[str, list[str]] = defaultdict(list)

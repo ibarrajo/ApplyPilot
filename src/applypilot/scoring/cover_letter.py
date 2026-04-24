@@ -251,10 +251,60 @@ def run_cover_letters(min_score: int | None = None, limit: int = 20, workers: in
     jobs = get_jobs_by_stage(conn=conn, stage="pending_cover",
                              min_score=min_score, max_age_days=max_age_days,
                              limit=limit)
+
+    # Per-company cover-letter cap (mirrors tailor cap in tailor.py).
+    # Keys resolved from `company`, with `site` fallback for direct-employer
+    # scrapers. Aggregator sites (LinkedIn, Indeed, etc.) are exempt.
+    from applypilot.scoring.tailor import resolve_company_key
+    cap = DEFAULTS["max_tailored_per_company"]
+
+    existing_rows = conn.execute("""
+        SELECT LOWER(company) AS key, COUNT(*) AS n
+        FROM jobs
+        WHERE cover_letter_path IS NOT NULL
+          AND company IS NOT NULL AND TRIM(company) != ''
+          AND discovered_at > datetime('now', ?)
+        GROUP BY key
+        UNION ALL
+        SELECT LOWER(site) AS key, COUNT(*) AS n
+        FROM jobs
+        WHERE cover_letter_path IS NOT NULL
+          AND (company IS NULL OR TRIM(company) = '')
+          AND strategy IN ('greenhouse_api', 'workday_api', 'lever_api',
+                           'ashby_api', 'amazon_jobs', 'microsoft_careers',
+                           'apple_jobs', 'google_careers')
+          AND site IS NOT NULL AND TRIM(site) != ''
+          AND discovered_at > datetime('now', ?)
+        GROUP BY key
+    """, (f"-{max_age_days or DEFAULTS['max_job_age_days']} days",
+          f"-{max_age_days or DEFAULTS['max_job_age_days']} days")).fetchall()
+    existing: dict[str, int] = {}
+    for r in existing_rows:
+        existing[r["key"]] = existing.get(r["key"], 0) + r["n"]
+
+    added_per_company: dict[str, int] = {}
+    capped_jobs: list[dict] = []
+    skipped_by_cap = 0
+    for job in jobs:
+        key = resolve_company_key(job)
+        if key is None:
+            capped_jobs.append(job)
+            continue
+        already = existing.get(key, 0) + added_per_company.get(key, 0)
+        if already >= cap:
+            skipped_by_cap += 1
+            continue
+        capped_jobs.append(job)
+        added_per_company[key] = added_per_company.get(key, 0) + 1
+    if skipped_by_cap:
+        log.info("Cover cap: skipped %d job(s) where company is at/over %d covers.",
+                 skipped_by_cap, cap)
+    jobs = capped_jobs
+
     conn.commit()  # Close read transaction before long LLM phase
 
     if not jobs:
-        log.info("No jobs needing cover letters (score >= %d).", min_score)
+        log.info("No jobs needing cover letters (score >= %d; after per-company cap).", min_score)
         return {"generated": 0, "errors": 0, "elapsed": 0.0}
 
     COVER_LETTER_DIR.mkdir(parents=True, exist_ok=True)
