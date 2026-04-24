@@ -363,12 +363,15 @@ def render_pdf(html: str, output_path: str) -> None:
 
 # ── DOCX Renderer ────────────────────────────────────────────────────
 
-def render_docx(resume: dict, output_path: str) -> None:
+def render_docx(resume: dict, output_path: str, metadata: dict | None = None) -> None:
     """Render parsed resume data to a DOCX file using python-docx.
 
     Args:
         resume: Parsed resume dict from parse_resume().
         output_path: Path to write the DOCX file.
+        metadata: Optional dict to populate the DOCX core_properties. Supported
+            keys: 'title', 'subject', 'keywords' (str or list), 'description',
+            'author', 'company', 'category', 'comments'.
     """
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
@@ -514,6 +517,32 @@ def render_docx(resume: dict, output_path: str) -> None:
         p = doc.add_paragraph(sections["EDUCATION"].strip())
         p.runs[0].font.size = Pt(10)
 
+    # Populate core_properties with metadata if provided.
+    if metadata:
+        cp = doc.core_properties
+        if "title" in metadata and metadata["title"]:
+            cp.title = str(metadata["title"])[:256]
+        if "subject" in metadata and metadata["subject"]:
+            cp.subject = str(metadata["subject"])[:256]
+        if "author" in metadata and metadata["author"]:
+            cp.author = str(metadata["author"])[:256]
+        if "company" in metadata and metadata["company"]:
+            cp.company = str(metadata["company"])[:256]
+        if "category" in metadata and metadata["category"]:
+            cp.category = str(metadata["category"])[:256]
+        if "comments" in metadata and metadata["comments"]:
+            cp.comments = str(metadata["comments"])[:2000]
+        if "description" in metadata and metadata["description"]:
+            # python-docx uses comments for long text; prefer comments for description
+            # if both provided, comments has priority above.
+            if not cp.comments:
+                cp.comments = str(metadata["description"])[:2000]
+        kw = metadata.get("keywords")
+        if kw:
+            if isinstance(kw, list):
+                kw = ", ".join(str(k).strip() for k in kw if k)
+            cp.keywords = str(kw)[:1024]
+
     doc.save(output_path)
 
 
@@ -523,7 +552,8 @@ def convert_to_pdf(
     text_path: Path,
     output_path: Path | None = None,
     html_only: bool = False,
-    doc_format: str = "pdf",
+    doc_format: str = "docx",
+    metadata: dict | None = None,
 ) -> Path:
     """Convert a text resume/cover letter to PDF or DOCX.
 
@@ -532,7 +562,10 @@ def convert_to_pdf(
         output_path: Optional override for the output path. Defaults to same
             name with the appropriate extension.
         html_only: If True, output HTML instead of PDF/DOCX.
-        doc_format: Output format — "pdf" (default) or "docx".
+        doc_format: Output format — "docx" (default) or "pdf".
+        metadata: Optional dict to populate DOCX core_properties (ignored for PDF).
+            Supported keys: 'title', 'subject', 'keywords', 'author', 'company',
+            'category', 'comments', 'description'.
 
     Returns:
         Path to the generated file.
@@ -555,7 +588,7 @@ def convert_to_pdf(
     if doc_format == "docx":
         out = output_path or text_path.with_suffix(".docx")
         out = Path(out)
-        render_docx(resume, str(out))
+        render_docx(resume, str(out), metadata=metadata)
         log.info("DOCX generated: %s", out)
         return out
 
@@ -568,7 +601,7 @@ def convert_to_pdf(
     return out
 
 
-def batch_convert(limit: int = 50, doc_format: str = "pdf") -> int:
+def batch_convert(limit: int = 50, doc_format: str = "docx") -> int:
     """Convert .txt files in TAILORED_DIR that don't have corresponding output files.
 
     Scans for .txt files (excluding _JOB.txt and _REPORT.json), checks if a
@@ -576,7 +609,7 @@ def batch_convert(limit: int = 50, doc_format: str = "pdf") -> int:
 
     Args:
         limit: Maximum number of files to convert.
-        doc_format: Output format — "pdf" (default) or "docx".
+        doc_format: Output format — "docx" (default) or "pdf".
 
     Returns:
         Number of files generated.

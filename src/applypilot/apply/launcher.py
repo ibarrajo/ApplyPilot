@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 # Document format for resume/cover letter uploads ("pdf" or "docx").
 # Set once by the CLI before workers start; read by run_job/gen_prompt.
-_doc_format: str = "pdf"
+_doc_format: str = "docx"
 
 
 def set_doc_format(fmt: str) -> None:

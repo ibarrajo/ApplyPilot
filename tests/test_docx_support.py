@@ -81,16 +81,16 @@ class TestConvertToDocx:
         assert result == custom_out
         assert result.exists()
 
-    def test_default_format_is_pdf(self, tmp_path):
-        """convert_to_pdf defaults to PDF when doc_format is not specified."""
+    def test_default_format_is_docx(self, tmp_path):
+        """convert_to_pdf defaults to DOCX when doc_format is not specified."""
         txt_file = tmp_path / "resume.txt"
         txt_file.write_text(SAMPLE_RESUME, encoding="utf-8")
 
         from applypilot.scoring.pdf import convert_to_pdf
-        # Mock render_pdf to avoid needing Playwright
-        with patch("applypilot.scoring.pdf.render_pdf") as mock_render:
+        # Mock render_docx to avoid needing python-docx
+        with patch("applypilot.scoring.pdf.render_docx") as mock_render:
             result = convert_to_pdf(txt_file)
-            assert result.suffix == ".pdf"
+            assert result.suffix == ".docx"
             mock_render.assert_called_once()
 
     def test_invalid_format_raises(self, tmp_path):
@@ -293,12 +293,12 @@ class TestValidDocFormats:
         assert "pdf" in VALID_DOC_FORMATS
         assert "docx" in VALID_DOC_FORMATS
 
-    def test_pdf_is_default(self):
-        """Ensure PDF remains the default format in the public API."""
+    def test_docx_is_default(self):
+        """Ensure DOCX is the default format in the public API."""
         import inspect
         from applypilot.scoring.pdf import convert_to_pdf
         sig = inspect.signature(convert_to_pdf)
-        assert sig.parameters["doc_format"].default == "pdf"
+        assert sig.parameters["doc_format"].default == "docx"
 
 
 class TestSetDocFormat:

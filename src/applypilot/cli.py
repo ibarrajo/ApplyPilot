@@ -102,7 +102,7 @@ def run(
         help="Parallel threads for Workday/smart-extract stages. (JobSpy runs sequentially regardless.)",
     ),
     stream: bool = typer.Option(False, "--stream", help="Run stages concurrently (streaming mode)."),
-    doc_format: str = typer.Option("pdf", "--doc-format", help="Document format for resumes/cover letters: pdf (default) or docx."),
+    doc_format: str = typer.Option("docx", "--doc-format", help="Document format for resumes/cover letters: docx (default) or pdf."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview stages without executing."),
     source: Optional[list[str]] = typer.Option(
         None, "--source", "-s",
@@ -200,7 +200,7 @@ def apply(
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview actions without submitting."),
     headless: bool = typer.Option(False, "--headless", help="Run browsers in headless mode."),
     url: Optional[str] = typer.Option(None, "--url", help="Apply to a specific job URL."),
-    doc_format: str = typer.Option("pdf", "--doc-format", help="Document format for resumes/cover letters: pdf (default) or docx."),
+    doc_format: str = typer.Option("docx", "--doc-format", help="Document format for resumes/cover letters: docx (default) or pdf."),
     gen: bool = typer.Option(False, "--gen", help="Generate prompt file for manual debugging instead of running."),
     mark_applied: Optional[str] = typer.Option(None, "--mark-applied", help="Manually mark a job URL as applied."),
     fresh_sessions: bool = typer.Option(False, "--fresh-sessions", help="Refresh Chrome session cookies from your real profile before launching."),

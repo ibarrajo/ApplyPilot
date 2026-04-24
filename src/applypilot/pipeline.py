@@ -224,7 +224,7 @@ def _run_score(workers: int = 1, max_age_days: int | None = None) -> dict:
 
 
 def _run_tailor(min_score: int | None = None, max_age_days: int | None = None,
-                limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
+                limit: int = 20, workers: int = 1, doc_format: str = "docx") -> dict:
     """Stage: Resume tailoring — generate tailored resumes for high-fit jobs."""
     from applypilot.config import DEFAULTS
     if min_score is None:
@@ -242,7 +242,7 @@ def _run_tailor(min_score: int | None = None, max_age_days: int | None = None,
 
 
 def _run_cover(min_score: int | None = None, max_age_days: int | None = None,
-               limit: int = 20, workers: int = 1, doc_format: str = "pdf") -> dict:
+               limit: int = 20, workers: int = 1, doc_format: str = "docx") -> dict:
     """Stage: Cover letter generation."""
     from applypilot.config import DEFAULTS
     if min_score is None:
@@ -259,7 +259,7 @@ def _run_cover(min_score: int | None = None, max_age_days: int | None = None,
         return {"status": f"error: {e}"}
 
 
-def _run_pdf(doc_format: str = "pdf") -> dict:
+def _run_pdf(doc_format: str = "docx") -> dict:
     """Stage: Document conversion — convert tailored resumes and cover letters to PDF/DOCX."""
     try:
         from applypilot.scoring.pdf import batch_convert
@@ -407,7 +407,7 @@ def _run_stage_streaming(
     limit: int = 20,
     workers: int = 1,
     sources: list[str] | None = None,
-    doc_format: str = "pdf",
+    doc_format: str = "docx",
 ) -> None:
     """Run a single stage in streaming mode: loop until upstream done + no work.
 
@@ -495,7 +495,7 @@ def _run_sequential(
     limit: int = 20,
     workers: int = 1,
     sources: list[str] | None = None,
-    doc_format: str = "pdf",
+    doc_format: str = "docx",
 ) -> dict:
     """Execute stages one at a time (original behavior)."""
     results: list[dict] = []
@@ -558,7 +558,7 @@ def _run_sequential(
 def _run_streaming(ordered: list[str], min_score: int,
                    max_age_days: int | None = None,
                    limit: int = 20, workers: int = 1,
-                   sources: list[str] | None = None, doc_format: str = "pdf") -> dict:
+                   sources: list[str] | None = None, doc_format: str = "docx") -> dict:
     """Execute stages concurrently with DB as conveyor belt."""
     tracker = _StageTracker()
     stop_event = threading.Event()
@@ -630,7 +630,7 @@ def run_pipeline(
     stream: bool = False,
     workers: int = 1,
     sources: list[str] | None = None,
-    doc_format: str = "pdf",
+    doc_format: str = "docx",
 ) -> dict:
     """Run pipeline stages.
 
