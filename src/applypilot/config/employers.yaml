@@ -302,3 +302,12 @@ employers:
     tenant: "canadiansolar"
     site_id: "CanadianSolar"
     base_url: "https://canadiansolar.wd5.myworkdayjobs.com"
+
+  # ── Seattle-area additions (2026-04-24) ──────────────────────────
+  # Verified via the Missing-Employer ATS audit.
+
+  expedia:
+    name: "Expedia Group"
+    tenant: "expedia"
+    site_id: "search"
+    base_url: "https://expedia.wd108.myworkdayjobs.com"

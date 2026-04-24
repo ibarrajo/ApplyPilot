@@ -88,6 +88,8 @@ DISCOVERY_SOURCES: dict[str, str] = {
     "indeed":       "Indeed only (via JobSpy)",
     "workday":      "Workday corporate career sites",
     "greenhouse":   "Greenhouse ATS public board API",
+    "amazon":       "amazon.jobs public search API",
+    "costco":       "careers.costco.com public API (Issaquah HQ)",
     "smartextract": "Smart extract (AI-powered scraping, incl. Dice via sites.yaml)",
     "hackernews":   "Hacker News 'Who is Hiring?' thread",
 }
@@ -182,6 +184,28 @@ def _run_discover(workers: int = 1, sources: list[str] | None = None) -> dict:
             log.error("Greenhouse scraper failed: %s", e)
             console.print(f"  [red]Greenhouse error:[/red] {e}")
             stats["greenhouse"] = f"error: {e}"
+
+    if "amazon" in active:
+        console.print("  [cyan]Amazon.jobs scraper...[/cyan]")
+        try:
+            from applypilot.discovery.amazon import run_amazon_discovery
+            run_amazon_discovery(workers=workers)
+            stats["amazon"] = "ok"
+        except Exception as e:
+            log.error("Amazon scraper failed: %s", e)
+            console.print(f"  [red]Amazon error:[/red] {e}")
+            stats["amazon"] = f"error: {e}"
+
+    if "costco" in active:
+        console.print("  [cyan]Costco careers scraper...[/cyan]")
+        try:
+            from applypilot.discovery.costco import run_costco_discovery
+            run_costco_discovery(workers=workers)
+            stats["costco"] = "ok"
+        except Exception as e:
+            log.error("Costco scraper failed: %s", e)
+            console.print(f"  [red]Costco error:[/red] {e}")
+            stats["costco"] = f"error: {e}"
 
     if "smartextract" in active:
         console.print("  [cyan]Smart extract (AI-powered scraping)...[/cyan]")

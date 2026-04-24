@@ -93,6 +93,12 @@ _INELIGIBLE_TITLE_PATTERNS = re.compile(
     r'|\bSolutions Engineer\b'
     r'|\bPre[- ]?[Ss]ales\b'
     r'|\bCustomer Success Engineer\b'
+    # Retail / warehouse / service roles (filter out Costco + similar noise)
+    r'|\bCashier\b|\bBaker\b|\bCake Decorator\b|\bButcher\b|\bMeat Cutter\b'
+    r'|\bGas Station Attendant\b|\bPharmacy Technician\b|\bHearing Aid Dispenser\b'
+    r'|\bStocker\b|\bForklift\b|\bWarehouse Associate\b|\bTruck Driver\b'
+    r'|\bBakery Clerk\b|\bDeli Clerk\b|\bProduce Clerk\b|\bMember Service\b'
+    r'|\bOptician\b|\bOptical\b'
     # More seniority — "Graduate Developer"/"Graduate Software Engineer" patterns
     # Protected: "Graduate School", "Graduate Student" (those don't appear in job titles)
     r'|\bGraduate\b'
