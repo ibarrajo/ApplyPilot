@@ -85,3 +85,32 @@ employers:
     name: "Stackline"
     neighborhood: "Seattle"
     tier: 2
+
+  # ── Added 2026-04-24 from v3 mega-corp audit ──
+
+  twilio:
+    name: "Twilio"
+    neighborhood: "Seattle (remote-heavy)"
+    tier: 2
+    # Note: Most Twilio roles are Remote-US or international; very few
+    # actually require Seattle presence.
+
+  pinterest:
+    name: "Pinterest"
+    neighborhood: "Seattle"
+    tier: 2
+
+  airbnb:
+    name: "Airbnb"
+    neighborhood: "Seattle (some remote)"
+    tier: 2
+
+  stripe:
+    name: "Stripe"
+    neighborhood: "Seattle"
+    tier: 1
+
+  uberfreight:
+    name: "Uber Freight (acquired Convoy)"
+    neighborhood: "Seattle"
+    tier: 2
