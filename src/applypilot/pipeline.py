@@ -87,6 +87,7 @@ DISCOVERY_SOURCES: dict[str, str] = {
     "linkedin":     "LinkedIn only (via JobSpy)",
     "indeed":       "Indeed only (via JobSpy)",
     "workday":      "Workday corporate career sites",
+    "greenhouse":   "Greenhouse ATS public board API",
     "smartextract": "Smart extract (AI-powered scraping, incl. Dice via sites.yaml)",
     "hackernews":   "Hacker News 'Who is Hiring?' thread",
 }
@@ -170,6 +171,17 @@ def _run_discover(workers: int = 1, sources: list[str] | None = None) -> dict:
             log.error("Workday scraper failed: %s", e)
             console.print(f"  [red]Workday error:[/red] {e}")
             stats["workday"] = f"error: {e}"
+
+    if "greenhouse" in active:
+        console.print("  [cyan]Greenhouse ATS scraper...[/cyan]")
+        try:
+            from applypilot.discovery.greenhouse import run_greenhouse_discovery
+            run_greenhouse_discovery(workers=workers)
+            stats["greenhouse"] = "ok"
+        except Exception as e:
+            log.error("Greenhouse scraper failed: %s", e)
+            console.print(f"  [red]Greenhouse error:[/red] {e}")
+            stats["greenhouse"] = f"error: {e}"
 
     if "smartextract" in active:
         console.print("  [cyan]Smart extract (AI-powered scraping)...[/cyan]")

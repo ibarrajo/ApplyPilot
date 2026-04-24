@@ -1,0 +1,87 @@
+# Greenhouse-powered employer registry for Seattle-area discovery.
+#
+# Slugs are the tenant part of the careers URL (boards.greenhouse.io/{slug}
+# or job-boards.greenhouse.io/{slug}). The scraper hits
+# `https://boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true`.
+#
+# Verified 2026-04-24 from the Seattle employer research agents
+# (docs/seattle_employers_v1.yaml + v2.yaml). Extend by adding more slugs.
+
+employers:
+  # ── Tier 1: Strong eng culture, distributed-systems focus ──
+
+  temporaltechnologies:
+    name: "Temporal Technologies"
+    neighborhood: "Bellevue"
+    tier: 1
+
+  pulumicorporation:
+    name: "Pulumi"
+    neighborhood: "Downtown Seattle"
+    tier: 1
+
+  andurilindustries:
+    name: "Anduril Industries"
+    neighborhood: "Fremont / Ship Canal"
+    tier: 1
+
+  # ── Tier 1-2 scale-ups ──
+
+  carta:
+    name: "Carta"
+    neighborhood: "South Lake Union"
+    tier: 2
+
+  smartsheet:
+    name: "Smartsheet"
+    neighborhood: "Bellevue"
+    tier: 2
+
+  offerup:
+    name: "OfferUp"
+    neighborhood: "Bellevue"
+    tier: 2
+
+  extrahopnetworks:
+    name: "ExtraHop"
+    neighborhood: "Downtown Seattle"
+    tier: 2
+
+  tanium:
+    name: "Tanium"
+    neighborhood: "Bellevue / Kirkland"
+    tier: 2
+
+  # ── AI2 Incubator portfolio ──
+
+  yoodliinc:
+    name: "Yoodli"
+    neighborhood: "South Lake Union"
+    tier: 1
+
+  # TODO: Ai2 (Allen Institute for AI) — not on Greenhouse. Research real ATS
+  # (likely Lever or Workable). Listed in seattle_employers_v2.yaml.
+
+  # ── Other Madrona / Built In scale-ups ──
+
+  databricks:
+    name: "Databricks"
+    neighborhood: "Downtown Seattle"
+    tier: 1
+
+  # TODO: Echodyne — not on Greenhouse (404). Possibly Lever or custom.
+
+  axon:
+    name: "Axon"
+    neighborhood: "Seattle / Scottsdale"
+    tier: 2
+
+  sproutsocial:
+    name: "Sprout Social"
+    neighborhood: "Seattle / Chicago (remote)"
+    tier: 2
+
+  stackline:
+    name: "Stackline"
+    neighborhood: "Seattle"
+    tier: 2
