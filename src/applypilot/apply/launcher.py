@@ -1420,6 +1420,8 @@ def mark_job(url: str, status: str, reason: str | None = None) -> None:
         transition_state(conn, url, target,
             reason=f"manually marked {status} via CLI",
             force=True)
+    else:
+        logger.warning("mark_job: unknown status %r, no state transition emitted", status)
     _db_retry_commit(conn)
 
 
