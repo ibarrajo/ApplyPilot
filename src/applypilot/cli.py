@@ -670,14 +670,18 @@ def dashboard() -> None:
 
 @app.command("human-review")
 def human_review(
-    port: int = typer.Option(7373, "--port", help="Port for the review UI server."),
+    port: int = typer.Option(None, "--port", help="Port for the review UI server. Default: HUMAN_REVIEW_PORT (7373)."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Don't auto-open the browser."),
 ) -> None:
     """Launch Human-in-the-Loop review UI for parked jobs."""
     _bootstrap()
 
+    from applypilot.apply.chrome import HUMAN_REVIEW_PORT
     from applypilot.database import get_stats
     from applypilot.apply.human_review import serve
+
+    if port is None:
+        port = HUMAN_REVIEW_PORT
 
     stats = get_stats()
     count = stats.get("needs_human", 0)

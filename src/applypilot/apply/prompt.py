@@ -628,7 +628,8 @@ def build_prompt(job: dict, tailored_resume: str,
         cl_display = cover_letter_text
 
     # Per-worker server port (homepage URL baked into prompt)
-    server_port = 7380 + worker_id
+    from applypilot.apply.chrome import HITL_LISTEN_BASE_PORT
+    server_port = HITL_LISTEN_BASE_PORT + worker_id
 
     # Phone digits only (for fields with country prefix)
     phone_digits = "".join(c for c in personal.get("phone", "") if c.isdigit())

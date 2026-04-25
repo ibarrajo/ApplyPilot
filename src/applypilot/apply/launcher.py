@@ -40,7 +40,7 @@ from applypilot.apply.chrome import (
     launch_chrome, cleanup_worker, kill_all_chrome,
     detect_ats, save_ats_session, clear_ats_session,
     reset_worker_dir, cleanup_on_exit, _kill_process_tree,
-    BASE_CDP_PORT, bring_to_foreground,
+    BASE_CDP_PORT, HITL_LISTEN_BASE_PORT, bring_to_foreground,
     probe_existing_chrome, _AdoptedChromeProcess,
     _chrome_procs, _chrome_lock,
 )
@@ -123,9 +123,7 @@ _waiting_lock = threading.Lock()
 _hitl_servers: dict[int, HTTPServer] = {}
 _hitl_server_lock = threading.Lock()
 
-# Base port for in-pipeline HITL HTTP listeners (7380-7384 for workers 0-4)
-HITL_LISTEN_BASE_PORT = 7380
-
+# HITL_LISTEN_BASE_PORT (7380 + worker_id) is defined in chrome.py and imported above.
 # Always-on per-worker HTTP servers (one per worker, started once in worker_loop)
 _worker_servers: dict[int, HTTPServer] = {}
 _worker_server_lock = threading.Lock()
