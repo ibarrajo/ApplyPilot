@@ -500,13 +500,17 @@ If CapSolver genuinely failed (errorId > 0):
 4. All else fails -> Output RESULT:CAPTCHA."""
 
 
-def _build_qa_section() -> str:
+def _build_qa_section(doc_format: str | None = None) -> str:
     """Build the known Q&A pairs section for the agent prompt.
 
     Queries the qa_knowledge table and formats accepted/human-provided answers
     so the agent can reuse them for screening questions.
+
+    When ``doc_format`` is provided, answers referencing the opposite file
+    extension (e.g. "Resume.pdf" while running in DOCX mode) are suppressed
+    so the agent doesn't get redirected to a filename that no longer exists.
     """
-    all_qa = get_all_qa()
+    all_qa = get_all_qa(doc_format=doc_format)
     if not all_qa:
         return ""
 
@@ -610,7 +614,7 @@ def build_prompt(job: dict, tailored_resume: str,
     screening_section = _build_screening_section(profile)
     hard_rules = _build_hard_rules(profile)
     captcha_section = _build_captcha_section()
-    qa_section = _build_qa_section()
+    qa_section = _build_qa_section(doc_format=doc_format)
 
     # Cover letter fallback text
     city = personal.get("city", "the area")

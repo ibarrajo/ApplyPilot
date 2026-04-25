@@ -2021,31 +2021,74 @@ def lookup_qa(question: str,
     return []
 
 
-def get_qa(question: str, conn: sqlite3.Connection | None = None) -> str | None:
+def _opposite_format_suffix(doc_format: str | None) -> str | None:
+    """Return the file-extension pattern whose answers should be suppressed.
+
+    When we render the agent prompt in DOCX mode, any historical Q&A answer
+    that suggests a `.pdf` filename (e.g. "Josue_Resume.pdf") is stale — the
+    agent would try to upload a file that doesn't exist. The reverse applies
+    in PDF mode.
+    """
+    if doc_format == "docx":
+        return ".pdf"
+    if doc_format == "pdf":
+        return ".docx"
+    return None
+
+
+def _answer_mentions_suffix(answer: str, suffix: str) -> bool:
+    """Return True if `answer` contains `suffix` as a file-extension token.
+
+    Matches case-insensitively and only at an extension-boundary (so a URL
+    fragment like 'mydocx' wouldn't match '.docx').
+    """
+    import re
+    # \.pdf\b / \.docx\b — requires literal dot and word boundary after.
+    pattern = re.escape(suffix) + r"\b"
+    return re.search(pattern, answer, re.IGNORECASE) is not None
+
+
+def get_qa(question: str, conn: sqlite3.Connection | None = None,
+           doc_format: str | None = None) -> str | None:
     """Return the best known answer for a question, or None if not found.
 
     Looks up by normalized question key and returns the answer with the
     best outcome (accepted > unknown > rejected).
+
+    When ``doc_format`` is "docx", answers that reference a ".pdf" filename
+    are suppressed (and vice versa for "pdf"). This prevents stale
+    historical Q&A rows from re-suggesting the wrong file format to the
+    apply agent after a format switchover.
     """
     if conn is None:
         conn = get_connection()
     key = question_key(question)
-    row = conn.execute(
+    rows = conn.execute(
         "SELECT answer_text FROM qa_knowledge "
         "WHERE question_key = ? "
         "ORDER BY CASE outcome "
         "  WHEN 'accepted' THEN 1 "
         "  WHEN 'unknown' THEN 2 "
         "  WHEN 'rejected' THEN 3 "
-        "  ELSE 4 END "
-        "LIMIT 1",
+        "  ELSE 4 END",
         (key,),
-    ).fetchone()
-    return row[0] if row else None
+    ).fetchall()
+    opposite = _opposite_format_suffix(doc_format)
+    for row in rows:
+        answer = row[0]
+        if opposite and _answer_mentions_suffix(answer, opposite):
+            continue
+        return answer
+    return None
 
 
-def get_all_qa(conn: sqlite3.Connection | None = None) -> list[dict]:
-    """Return all Q&A pairs, grouped by question, best answer first."""
+def get_all_qa(conn: sqlite3.Connection | None = None,
+               doc_format: str | None = None) -> list[dict]:
+    """Return all Q&A pairs, grouped by question, best answer first.
+
+    See ``get_qa`` for ``doc_format`` semantics — the same filter applies
+    here to keep the KNOWN_ANSWERS prompt section format-consistent.
+    """
     if conn is None:
         conn = get_connection()
     rows = conn.execute(
@@ -2057,10 +2100,17 @@ def get_all_qa(conn: sqlite3.Connection | None = None) -> list[dict]:
         "  WHEN 'rejected' THEN 3 "
         "  ELSE 4 END"
     ).fetchall()
-    if rows:
-        columns = rows[0].keys()
-        return [dict(zip(columns, row)) for row in rows]
-    return []
+    if not rows:
+        return []
+    columns = rows[0].keys()
+    results = [dict(zip(columns, row)) for row in rows]
+    opposite = _opposite_format_suffix(doc_format)
+    if opposite:
+        results = [
+            r for r in results
+            if not _answer_mentions_suffix(r["answer_text"], opposite)
+        ]
+    return results
 
 
 def mark_qa_outcome(job_url: str, outcome: str,

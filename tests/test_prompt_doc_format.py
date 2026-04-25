@@ -116,7 +116,8 @@ def _mock_db_calls(monkeypatch):
     """Stub out DB-dependent helpers so the test does not need a live DB."""
     from applypilot.apply import prompt as prompt_module
 
-    monkeypatch.setattr(prompt_module, "get_all_qa", lambda: [])
+    # Accept optional doc_format kwarg (wired through after Fix 2).
+    monkeypatch.setattr(prompt_module, "get_all_qa", lambda **_kw: [])
 
     # get_accounts_for_prompt is imported lazily inside build_prompt; stub the
     # module-level symbol so both pre- and post-import lookups succeed.
