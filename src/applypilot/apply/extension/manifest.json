@@ -6,6 +6,7 @@
   "description": "Monitor and control ApplyPilot apply workers from any Chrome window.",
   "permissions": ["storage", "alarms", "activeTab", "tabs"],
   "host_permissions": ["http://localhost/*", "https://*/*", "http://*/*"],
+  "web_accessible_resources": [],
   "content_scripts": [
     {
       "matches": ["https://*/*", "http://*/*"],
