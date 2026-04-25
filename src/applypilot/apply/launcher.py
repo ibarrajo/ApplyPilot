@@ -1328,12 +1328,15 @@ def mark_result(url: str, status: str, error: str | None = None,
 
 
 def release_lock(url: str) -> None:
-    """Release the in_progress lock without changing status."""
+    """Release the in_progress lock and revert state from applying back to ready_to_apply."""
     conn = get_connection()
     _db_retry_execute(conn,
         "UPDATE jobs SET apply_status = NULL, agent_id = NULL WHERE url = ? AND apply_status = 'in_progress'",
         (url,),
     )
+    transition_state(conn, url, "ready_to_apply",
+                     reason="lock released without submit",
+                     force=True)
     _db_retry_commit(conn)
 
 

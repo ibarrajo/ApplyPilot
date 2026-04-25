@@ -189,3 +189,26 @@ def test_reset_failed_transitions_to_ready_to_apply(tmp_db, seed_job):
     assert any("reset_failed" in (r or "") or "re-queued" in (r or "") for r in reasons), (
         f"Expected transition reason mentioning 'reset_failed' or 're-queued'; got {reasons}"
     )
+
+
+# ---------------------------------------------------------------------------
+# B6 — release_lock reverts applying → ready_to_apply
+# ---------------------------------------------------------------------------
+
+def test_release_lock_reverts_applying_to_ready_to_apply(tmp_db, seed_job):
+    """When --gen or worker abandons a held job, state must revert."""
+    conn = tmp_db()
+    row = _seed_applying(conn, seed_job, "rl-b6")
+    url = row["url"]
+    conn.execute("UPDATE jobs SET apply_status = 'in_progress' WHERE url = ?", (url,))
+    conn.commit()
+
+    from applypilot.apply.launcher import release_lock
+    release_lock(url)
+
+    assert current_state(conn, url) == "ready_to_apply"
+    history = state_history(conn, url)
+    reasons = [h["reason"] for h in history]
+    assert any("lock released" in (r or "") for r in reasons), (
+        f"Expected transition reason mentioning 'lock released'; got {reasons}"
+    )
