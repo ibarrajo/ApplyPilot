@@ -668,31 +668,11 @@ def dashboard() -> None:
     open_dashboard()
 
 
-@app.command("human-review")
-def human_review(
-    port: int = typer.Option(None, "--port", help="Port for the review UI server. Default: HUMAN_REVIEW_PORT (7373)."),
-    no_browser: bool = typer.Option(False, "--no-browser", help="Don't auto-open the browser."),
-) -> None:
-    """Launch Human-in-the-Loop review UI for parked jobs."""
-    _bootstrap()
-
-    from applypilot.apply.chrome import HUMAN_REVIEW_PORT
-    from applypilot.database import get_stats
-    from applypilot.apply.human_review import serve
-
-    if port is None:
-        port = HUMAN_REVIEW_PORT
-
-    stats = get_stats()
-    count = stats.get("needs_human", 0)
-
-    if count == 0:
-        console.print("[green]No jobs in the human review queue.[/green]")
-        console.print("[dim]Jobs are parked here when the apply agent hits a login wall it can't solve.[/dim]")
-        raise typer.Exit()
-
-    console.print(f"\n[bold purple]Human Review Queue:[/bold purple] {count} job(s) need attention\n")
-    serve(port=port, open_browser=not no_browser)
+# `applypilot human-review` was deleted in plan 5 of the apply UX overhaul.
+# The standalone HITL server (port 7373) duplicated the in-pipeline HITL
+# flow (port 7380+wid), so it was removed. Jobs that get parked as
+# `needs_human` are now picked up automatically by the next
+# `applypilot apply` run via _run_hitl's launcher-restart path.
 
 
 # ---------------------------------------------------------------------------
