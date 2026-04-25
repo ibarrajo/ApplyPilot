@@ -23,6 +23,7 @@ dependencies = [
     "httpx>=0.24",
     "beautifulsoup4>=4.12",
     "playwright>=1.40",
+    "patchright>=1.50",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "pandas>=2.0",
