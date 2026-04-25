@@ -124,6 +124,11 @@ _hitl_servers: dict[int, HTTPServer] = {}
 _hitl_server_lock = threading.Lock()
 
 # HITL_LISTEN_BASE_PORT (7380 + worker_id) is defined in chrome.py and imported above.
+
+# Module-level lock for the terminal-stdin Done fallback (audit #6 in the
+# apply UX overhaul spec). Only one worker at a time gets the stdin reader,
+# to avoid contention when N workers are paused simultaneously.
+_stdin_fallback_lock = threading.Lock()
 # Always-on per-worker HTTP servers (one per worker, started once in worker_loop)
 _worker_servers: dict[int, HTTPServer] = {}
 _worker_server_lock = threading.Lock()
@@ -2524,6 +2529,35 @@ def _run_hitl(
                    "saved_instruction": _saved,
                    "hitl_watcher_proc": _watcher})
     _register_waiting(worker_id, "waiting_human")
+
+    # 7b. Terminal-stdin Done fallback (audit #6).
+    # If the in-page banner Done button breaks (e.g. CSP blocked the JS, or the
+    # Node-based watcher crashed), the user can type 'done' in the launcher
+    # terminal to unblock. Only one worker at a time gets the stdin reader to
+    # avoid input contention; the second paused worker falls back to
+    # banner-only.
+    if _stdin_fallback_lock.acquire(blocking=False):
+        def _stdin_done_reader() -> None:
+            try:
+                import sys
+                line = sys.stdin.readline().strip().lower()
+                if line in ("done", "d", "") and not hitl_event.is_set():
+                    if add_event:
+                        add_event(f"[W{worker_id}] stdin fallback: 'done' received")
+                    hitl_event.set()
+            except Exception:
+                logger.debug("stdin fallback reader crashed", exc_info=True)
+            finally:
+                _stdin_fallback_lock.release()
+        try:
+            print(
+                f"[hitl] worker {worker_id} paused on {navigate_url[:60]} — "
+                "type 'done' here to override the banner button",
+                flush=True,
+            )
+        except Exception:
+            pass
+        threading.Thread(target=_stdin_done_reader, daemon=True).start()
 
     # 8. Wait, with Chrome-crash recovery.
     while stop_event is None or not stop_event.is_set():

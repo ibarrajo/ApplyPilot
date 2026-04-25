@@ -1133,7 +1133,38 @@ def launch_chrome(worker_id: int, port: int | None = None,
         # Bypass XDG portal for file dialogs — portal routes through Nautilus which
         # hangs when the saved last-directory path doesn't exist on this machine.
         # GtkFileDialogPortal disables portal; FileSystemAccessAPI keeps upload working.
-        "GtkFileDialogPortal",
+        "GtkFileDialogPortal,"
+        # patchright/playwright disabled-features (anti-fingerprint + stability):
+        # AvoidUnnecessaryBeforeUnloadCheckSync, BoundaryEventDispatchTracksNodeRemoval,
+        # DestroyProfileOnBrowserClose, DialMediaRouteProvider, GlobalMediaControls,
+        # HttpsUpgrades, LensOverlay, MediaRouter, PaintHolding,
+        # ThirdPartyStoragePartitioning, Translate, AutoDeElevate, RenderDocument,
+        # OptimizationHints
+        "AvoidUnnecessaryBeforeUnloadCheckSync,BoundaryEventDispatchTracksNodeRemoval,"
+        "DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,"
+        "HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,"
+        "ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument,"
+        "OptimizationHints",
+        # patchright launch-time anti-fingerprint flags (from chromiumSwitches.js).
+        # `--enable-features=CDPScreenshotNewSurface` + `--disable-blink-features=AutomationControlled`
+        # are the two most fingerprint-relevant; the rest reduce noise and prevent the
+        # automation banner from leaking. See spec §2.2 and audit-related findings.
+        "--disable-field-trial-config",
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-breakpad",
+        "--disable-dev-shm-usage",
+        "--enable-features=CDPScreenshotNewSurface",
+        "--disable-hang-monitor",
+        "--disable-prompt-on-repost",
+        "--disable-renderer-backgrounding",
+        "--force-color-profile=srgb",
+        "--use-mock-keychain",
+        "--no-service-autorun",
+        "--export-tagged-pdf",
+        "--disable-search-engine-choice-screen",
+        "--edge-skip-compat-layer-relaunch",
         "--hide-crash-restore-bubble",
         "--noerrdialogs",
         "--password-store=basic",
