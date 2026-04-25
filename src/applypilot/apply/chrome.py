@@ -21,6 +21,56 @@ from applypilot import config
 
 logger = logging.getLogger(__name__)
 
+def _get_or_create_extension_key() -> str:
+    """Return the base64-encoded RSA public key used as manifest.json `key`.
+
+    Generates a fresh RSA-2048 key pair on first call, persists the public
+    key (DER + base64) to ~/.applypilot/extension_key.b64, and reuses it on
+    subsequent calls. Per-install randomness (NOT per-worker — all workers
+    on this install share the same extension ID) defeats LinkedIn's
+    cross-user fingerprint of ApplyPilot's extension.
+    """
+    import base64
+    import os as _os
+    import subprocess as _sp
+
+    key_path = config.APP_DIR / "extension_key.b64"
+    if key_path.exists():
+        return key_path.read_text(encoding="utf-8").strip()
+
+    # Generate a new RSA-2048 key pair via openssl. We only persist the
+    # PUBLIC key in DER + base64 (Chrome's manifest.json `key` format).
+    privkey_der = _sp.check_output(
+        ["openssl", "genpkey", "-algorithm", "RSA",
+         "-pkeyopt", "rsa_keygen_bits:2048", "-outform", "DER"],
+        stderr=_sp.DEVNULL,
+    )
+    pubkey_der = _sp.check_output(
+        ["openssl", "rsa", "-pubout", "-inform", "DER", "-outform", "DER"],
+        input=privkey_der, stderr=_sp.DEVNULL,
+    )
+    pubkey_b64 = base64.b64encode(pubkey_der).decode("ascii")
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_text(pubkey_b64, encoding="utf-8")
+    _os.chmod(key_path, 0o600)
+    return pubkey_b64
+
+
+def _patch_manifest_key(manifest_path: Path) -> None:
+    """Replace the `key` field in an extension manifest.json with our
+    per-install random key. Idempotent — calling again with the same key
+    is a no-op.
+    """
+    import json as _json
+    pubkey_b64 = _get_or_create_extension_key()
+    text = manifest_path.read_text(encoding="utf-8")
+    data = _json.loads(text)
+    if data.get("key") == pubkey_b64:
+        return  # already patched
+    data["key"] = pubkey_b64
+    manifest_path.write_text(_json.dumps(data, indent=2), encoding="utf-8")
+
+
 # --- Port table (audit #11 — centralize all port literals here) -------------
 # CDP port base — each worker uses BASE_CDP_PORT + worker_id
 BASE_CDP_PORT = 9222
@@ -453,6 +503,15 @@ def setup_worker_profile(worker_id: int, refresh_cookies: bool = False,
             # Prepend config inline to background.js (classic SW — no module import needed)
             bg_src = (ext_dst / "background.js").read_text(encoding="utf-8")
             (ext_dst / "background.js").write_text(config_js + bg_src, encoding="utf-8")
+            # Per-install random extension key (spec §3.1) — defeats LinkedIn's
+            # bulk fingerprint of ApplyPilot's extension across users. Key is
+            # generated once and persisted; same key across all workers on
+            # this install so the extension ID is stable for our flows.
+            try:
+                _patch_manifest_key(ext_dst / "manifest.json")
+            except Exception:
+                logger.debug("[worker-%d] Manifest key patch failed (non-fatal)",
+                             worker_id, exc_info=True)
             logger.debug("[worker-%d] Extension deployed to %s", worker_id, ext_dst)
         except (OSError, shutil.Error) as e:
             logger.warning("[worker-%d] Extension deploy failed (non-fatal): %s", worker_id, e)
