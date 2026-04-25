@@ -38,6 +38,11 @@ CONFIG_DIR = PACKAGE_DIR / "config"
 def get_chrome_path() -> str:
     """Auto-detect Chrome/Chromium executable path, cross-platform.
 
+    On Linux, prefers Chrome for Testing at
+    ~/.applypilot/chrome-for-testing/chrome-linux64/chrome if installed —
+    CfT is the only branded Chromium build that still accepts
+    --load-extension (required by the apply layer).
+
     Override with CHROME_PATH environment variable.
     """
     env_path = os.environ.get("CHROME_PATH")
@@ -59,6 +64,13 @@ def get_chrome_path() -> str:
         ]
     else:  # Linux
         candidates = []
+        # Prefer Chrome for Testing if installed: it is the only Chromium build
+        # that still honors --load-extension (Chrome 137+ silently rejects it on
+        # branded Stable/Beta/Dev/Canary). The apply layer relies on the
+        # ApplyPilot extension loading.
+        cft = Path.home() / ".applypilot" / "chrome-for-testing" / "chrome-linux64" / "chrome"
+        if cft.exists():
+            candidates.append(cft)
         for name in ("google-chrome", "google-chrome-stable", "chromium-browser", "chromium"):
             found = shutil.which(name)
             if found:
