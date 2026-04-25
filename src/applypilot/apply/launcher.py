@@ -1132,13 +1132,34 @@ def acquire_job(target_url: str | None = None,
                 time.sleep(_begin_delay)
                 _begin_delay = min(_begin_delay * 1.5, 30.0)
 
-        # Release stale in_progress locks from crashed runs (>30 min old)
+        # Release stale in_progress locks from crashed runs (>30 min old).
+        # P0.5 leak (c) from decision #31: also revert canonical state from
+        # 'applying' back to 'ready_to_apply' for each affected job. Pull
+        # affected URLs first so we can emit per-row transitions after the
+        # bulk UPDATE.
+        stale_urls = [
+            r[0] for r in conn.execute("""
+                SELECT url FROM jobs
+                WHERE apply_status = 'in_progress'
+                  AND last_attempted_at IS NOT NULL
+                  AND last_attempted_at < datetime('now', '-30 minutes')
+            """).fetchall()
+        ]
         conn.execute("""
             UPDATE jobs SET apply_status = NULL, agent_id = NULL
             WHERE apply_status = 'in_progress'
               AND last_attempted_at IS NOT NULL
               AND last_attempted_at < datetime('now', '-30 minutes')
         """)
+        for stale_url in stale_urls:
+            try:
+                transition_state(
+                    conn, stale_url, "ready_to_apply",
+                    reason="stale-lock release (acquire_job)",
+                    force=True,
+                )
+            except Exception:
+                logger.debug("stale-lock transition failed for %s", stale_url[:60], exc_info=True)
 
         if target_url:
             like = f"%{target_url.split('?')[0].rstrip('/')}%"
@@ -1259,6 +1280,11 @@ def acquire_job(target_url: str | None = None,
                 "apply_category = 'manual_only' WHERE url = ?",
                 (row["url"],),
             )
+            # P0.5 leak (b) from decision #31: also emit canonical state
+            # transition so jobs.state matches.
+            transition_state(conn, row["url"], "manual_only",
+                             reason="acquire_job: manual ATS",
+                             force=True)
             conn.commit()
             logger.info("Skipping manual ATS: %s", row["url"][:80])
             return None
@@ -3087,15 +3113,28 @@ def main(limit: int = 1, target_url: str | None = None,
     # Their Chrome windows are gone (killed by _kill_on_port() when workers start),
     # so reset them to NULL so they get picked up as normal jobs.
     _boot_conn = get_connection()
-    _nh_count = _boot_conn.execute(
-        "SELECT COUNT(*) FROM jobs WHERE apply_status='needs_human'"
-    ).fetchone()[0]
+    # P0.5 leak (d) from decision #31: pull URLs first, then bulk-update,
+    # then emit per-row state transitions back to ready_to_apply.
+    _nh_urls = [r[0] for r in _boot_conn.execute(
+        "SELECT url FROM jobs WHERE apply_status='needs_human'"
+    ).fetchall()]
+    _nh_count = len(_nh_urls)
     if _nh_count > 0:
         _boot_conn.execute(
             "UPDATE jobs SET apply_status=NULL, apply_category=NULL, "
             "needs_human_reason=NULL, needs_human_url=NULL, "
             "needs_human_instructions=NULL WHERE apply_status='needs_human'"
         )
+        for _nh_url in _nh_urls:
+            try:
+                transition_state(
+                    _boot_conn, _nh_url, "ready_to_apply",
+                    reason="startup re-queue from needs_human",
+                    force=True,
+                )
+            except Exception:
+                logger.debug("startup re-queue transition failed for %s",
+                             _nh_url[:60], exc_info=True)
         _boot_conn.commit()
         console.print(f"[yellow]Re-queued {_nh_count} needs_human job(s) from previous session[/yellow]")
         logger.info("Startup: re-queued %d needs_human jobs from previous session", _nh_count)

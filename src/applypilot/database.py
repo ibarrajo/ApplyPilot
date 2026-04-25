@@ -1839,12 +1839,27 @@ _TRACKING_PRIORITY = {
     "follow_up": 4, "interview": 5, "offer": 6,
 }
 
+# Maps tracking_status (the email-derived classification) to the canonical
+# state-machine state that should be set on the same job. Used by
+# update_tracking_status to keep `state` in sync with `tracking_status`
+# (decision #31 P0.5 leak (a) — was bypassing transition_state).
+_TRACKING_TO_STATE = {
+    "ghosted":      "ghosted",
+    "rejection":    "rejected",
+    "confirmation": "responded",
+    "follow_up":    "responded",
+    "interview":    "interview",
+    "offer":        "offer",
+}
+
 
 def update_tracking_status(job_url: str, new_status: str,
                            conn: sqlite3.Connection | None = None) -> bool:
     """Update a job's tracking_status if the new status has higher priority.
 
-    Returns True if the status was updated.
+    Returns True if the status was updated. Also threads the change through
+    `transition_state` so the canonical `state` column stays in sync — fixes
+    P0.5 leak (a) from CLAUDE.md decision #31.
     """
     if conn is None:
         conn = get_connection()
@@ -1865,6 +1880,21 @@ def update_tracking_status(job_url: str, new_status: str,
             (new_status, now, job_url),
         )
         conn.commit()
+        # Also emit a state-machine transition so the canonical `state`
+        # column matches. transition_state validates against
+        # VALID_TRANSITIONS — if the job isn't in a state that legally
+        # moves to the target (e.g. still "applying"), the call returns
+        # False and `tracking_status` is left as-is. We don't propagate
+        # the failure since email-driven updates are advisory.
+        target_state = _TRACKING_TO_STATE.get(new_status)
+        if target_state:
+            try:
+                transition_state(
+                    conn, job_url, target_state,
+                    reason=f"tracking:{new_status}",
+                )
+            except (ValueError, sqlite3.OperationalError):
+                pass
         return True
     return False
 
