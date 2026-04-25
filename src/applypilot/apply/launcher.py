@@ -2440,6 +2440,144 @@ def _probe_for_reconnect(worker_id: int, port: int) -> tuple[int | None, str | N
         return pid, None
 
 
+def _run_hitl(
+    worker_id: int,
+    port: int,
+    job: dict,
+    reason: str,
+    instructions: str,
+    navigate_url: str,
+    duration_ms: int,
+    *,
+    headless: bool = False,
+    ats_slug: str | None = None,
+    total_workers: int = 1,
+    model: str = "sonnet",
+    dry_run: bool = False,
+    no_hitl: bool = False,
+    chrome_proc=None,
+    add_event=None,
+    update_state=None,
+    stop_event=None,
+) -> tuple[str, int, list[dict]] | None:
+    """Block on a needs_human pause; return the post-resume run_job result.
+
+    Replaces the two near-duplicate HITL paths in _worker_loop_body
+    (generic + login_required). Steps:
+
+      1. mark_needs_human(...) — DB row says needs_human, prevents stale-lock theft.
+      2. If no_hitl: return None (caller should break and move on to next job).
+      3. Start hitl_listener (HTTP server on port 7380+wid) for /api/done/{hash}.
+      4. Inject banner via CDP → page.
+      5. Start the Node-based done watcher (polls window.__ap_hitl_done).
+      6. notify_human_needed (desktop notification).
+      7. Update worker state to "waiting_human".
+      8. Wait on hitl_event with chrome-crash recovery.
+      9. reset_needs_human(...) — DB row back to its pre-pause state.
+      10. Re-launch agent on same Chrome, retry up to 3× on transient errors.
+
+    Returns (result, duration_ms, screening_qs) from the post-resume run_job,
+    or None if no_hitl or stop was signaled.
+    """
+    import hashlib
+    import threading
+    import time
+
+    # 1. Persist the needs_human row.
+    mark_needs_human(job["url"], reason, navigate_url, instructions, duration_ms)
+
+    # 2. --no-hitl: park the job and bail.
+    if no_hitl:
+        if add_event:
+            add_event(f"[W{worker_id}] --no-hitl: parking '{reason}' and moving on")
+        if update_state:
+            update_state(worker_id, last_action=f"parked: {reason[:25]}")
+        return None
+
+    # 3. HTTP listener + 4. banner + 5. done watcher.
+    job_hash = hashlib.sha256(job["url"].encode()).hexdigest()[:12]
+    hitl_event = threading.Event()
+    hitl_port = _start_hitl_listener(worker_id, hitl_event, job_hash)
+
+    _inject_banner_for_worker(worker_id, port, job, reason, hitl_port,
+                              navigate_url=navigate_url, instructions=instructions)
+    from applypilot.apply.human_review import _start_done_watcher
+    _watcher = _start_done_watcher(port, hitl_port, job_hash)
+
+    # 6. Desktop notify + 7. worker state.
+    notify_human_needed(job, reason, navigate_url)
+    if add_event:
+        add_event(f"[W{worker_id}] WAITING for human: {reason[:20]}")
+    if update_state:
+        update_state(worker_id, status="waiting_human",
+                     last_action=f"WAITING: {reason[:25]}")
+    with _worker_state_lock:
+        ws = _worker_state.get(worker_id)
+    if ws is not None:
+        _saved = None
+        try:
+            from applypilot.database import close_connection, get_qa
+            _saved = get_qa(f"HITL:{job.get('site', '')}:{reason}")
+            close_connection()
+        except Exception:
+            pass
+        ws.update({"status": "waiting_human", "reason": reason,
+                   "instructions": instructions,
+                   "saved_instruction": _saved,
+                   "hitl_watcher_proc": _watcher})
+    _register_waiting(worker_id, "waiting_human")
+
+    # 8. Wait, with Chrome-crash recovery.
+    while stop_event is None or not stop_event.is_set():
+        if hitl_event.wait(timeout=5.0):
+            break
+        if chrome_proc and chrome_proc.poll() is not None:
+            if add_event:
+                add_event(f"[W{worker_id}] Chrome crashed during HITL; relaunching...")
+            try:
+                chrome_proc = launch_chrome(worker_id, port=port,
+                                            headless=headless, ats_slug=ats_slug,
+                                            total_workers=total_workers)
+                _inject_banner_for_worker(worker_id, port, job, reason,
+                                          hitl_port, navigate_url=navigate_url,
+                                          instructions=instructions)
+            except Exception:
+                logger.debug("Chrome relaunch during HITL failed", exc_info=True)
+    _stop_hitl_listener(worker_id)
+    _unregister_waiting(worker_id)
+    if stop_event is not None and stop_event.is_set():
+        return None
+
+    # 9. Reset DB row.
+    reset_needs_human(job["url"])
+
+    # 10. Re-launch agent with transient-error retry.
+    last_result = None
+    last_dur = 0
+    last_qs: list[dict] = []
+    for _attempt in range(3):
+        if add_event:
+            add_event(f"[W{worker_id}] Human done, relaunching agent"
+                      f" (attempt {_attempt + 1}/3)...")
+        if update_state:
+            update_state(worker_id, status="applying",
+                         last_action=f"relaunching after HITL (attempt {_attempt + 1})",
+                         start_time=time.time(), actions=0)
+        last_result, last_dur, last_qs = run_job(
+            job, port=port, worker_id=worker_id,
+            model=model, dry_run=dry_run, skip_tab_reset=True)
+        _hitl_reason = last_result.split(":", 1)[-1] if ":" in last_result else last_result
+        if _hitl_reason not in _HITL_TRANSIENT_ERRORS:
+            break
+        if stop_event is not None and stop_event.is_set():
+            break
+        if _attempt < 2:
+            if add_event:
+                add_event(f"[W{worker_id}] Transient ({_hitl_reason}), retrying in 30s...")
+            time.sleep(30)
+    return last_result, last_dur, last_qs
+
+
 def worker_loop(worker_id: int = 0, limit: int = 1,
                 target_url: str | None = None,
                 min_score: int | None = None,
@@ -2728,90 +2866,21 @@ def _worker_loop_body(
                     )
                     if nh_detail:
                         nh_instructions = f"{nh_instructions}\n\nAgent detail: {nh_detail}"
-                    # Mark in DB so stale-lock cleanup won't steal this job
-                    mark_needs_human(
-                        job["url"], nh_reason, nh_url, nh_instructions, duration_ms
+
+                    hitl_outcome = _run_hitl(
+                        worker_id=worker_id, port=port, job=job,
+                        reason=nh_reason, instructions=nh_instructions,
+                        navigate_url=nh_url, duration_ms=duration_ms,
+                        headless=headless, ats_slug=ats_slug,
+                        total_workers=total_workers, model=model, dry_run=dry_run,
+                        no_hitl=no_hitl, chrome_proc=chrome_proc,
+                        add_event=add_event, update_state=update_state,
+                        stop_event=_stop_event,
                     )
-
-                    if no_hitl:
-                        add_event(f"[W{worker_id}] --no-hitl: parking '{nh_reason}' and moving on")
-                        update_state(worker_id, last_action=f"parked: {nh_reason[:25]}")
+                    if hitl_outcome is None:
+                        # no_hitl mode parked the job, or stop was signaled.
                         break
-
-                    job_hash = hashlib.sha256(job["url"].encode()).hexdigest()[:12]
-                    hitl_event = threading.Event()
-                    hitl_port = _start_hitl_listener(worker_id, hitl_event, job_hash)
-
-                    _inject_banner_for_worker(worker_id, port, job, nh_reason, hitl_port,
-                                             navigate_url=nh_url,
-                                             instructions=nh_instructions)
-                    # Start background watcher: polls window.__ap_hitl_done via CDP
-                    # and calls /api/done/{hash} from Node (bypasses page CSP).
-                    from applypilot.apply.human_review import _start_done_watcher
-                    _watcher = _start_done_watcher(port, hitl_port, job_hash)
-                    notify_human_needed(job, nh_reason, nh_url)
-                    add_event(f"[W{worker_id}] WAITING for human: {nh_reason[:20]}")
-                    update_state(worker_id, status="waiting_human",
-                                 last_action=f"WAITING: {nh_reason[:25]}")
-                    # Update extension state so popup shows correct info
-                    with _worker_state_lock:
-                        ws = _worker_state.get(worker_id)
-                    if ws is not None:
-                        _saved = None
-                        try:
-                            from applypilot.database import get_qa
-                            from applypilot.database import close_connection
-                            _saved = get_qa(f"HITL:{job.get('site', '')}:{nh_reason}")
-                            close_connection()
-                        except Exception:
-                            pass
-                        ws.update({"status": "waiting_human", "reason": nh_reason,
-                                   "instructions": nh_instructions,
-                                   "saved_instruction": _saved,
-                                   "hitl_watcher_proc": _watcher})
-                    _register_waiting(worker_id, "waiting_human")
-
-                    # Block until user clicks Done in Chrome banner (interruptible).
-                    # Re-launch Chrome if it crashes while we're waiting.
-                    while not _stop_event.is_set():
-                        if hitl_event.wait(timeout=5.0):
-                            break
-                        if chrome_proc and chrome_proc.poll() is not None:
-                            add_event(f"[W{worker_id}] Chrome crashed during HITL; relaunching...")
-                            try:
-                                chrome_proc = launch_chrome(worker_id, port=port,
-                                                            headless=headless, ats_slug=ats_slug,
-                                                            total_workers=total_workers)
-                                _inject_banner_for_worker(worker_id, port, job, nh_reason,
-                                                          hitl_port, navigate_url=nh_url,
-                                                          instructions=nh_instructions)
-                            except Exception:
-                                logger.debug("Chrome relaunch during HITL failed", exc_info=True)
-                    _stop_hitl_listener(worker_id)
-                    _unregister_waiting(worker_id)
-                    if _stop_event.is_set():
-                        break
-
-                    # Reset status so agent can re-acquire and apply
-                    reset_needs_human(job["url"])
-
-                    # Relaunch agent on same Chrome; retry up to 3× on transient errors
-                    # (e.g. backend was down while user was completing the form)
-                    for _hitl_attempt in range(3):
-                        add_event(f"[W{worker_id}] Human done, relaunching agent"
-                                  f" (attempt {_hitl_attempt + 1}/3)...")
-                        update_state(worker_id, status="applying",
-                                     last_action=f"relaunching after HITL (attempt {_hitl_attempt + 1})",
-                                     start_time=time.time(), actions=0)
-                        result, duration_ms, screening_qs = run_job(
-                            job, port=port, worker_id=worker_id,
-                            model=model, dry_run=dry_run, skip_tab_reset=True)
-                        _hitl_reason = result.split(":", 1)[-1] if ":" in result else result
-                        if _hitl_reason not in _HITL_TRANSIENT_ERRORS or _stop_event.is_set():
-                            break
-                        if _hitl_attempt < 2:
-                            add_event(f"[W{worker_id}] Transient ({_hitl_reason}), retrying in 30s...")
-                            time.sleep(30)
+                    result, duration_ms, screening_qs = hitl_outcome
                     relaunch = True
                     continue
 
@@ -2823,79 +2892,20 @@ def _worker_loop_body(
                             clear_ats_session(ats_slug)
                         nh_url = job.get("application_url") or job["url"]
                         nh_instructions = _HITL_INSTRUCTIONS["login_required"]
-                        # Mark in DB so stale-lock cleanup won't steal this job
-                        mark_needs_human(
-                            job["url"], "login_required", nh_url,
-                            nh_instructions, duration_ms
+
+                        hitl_outcome = _run_hitl(
+                            worker_id=worker_id, port=port, job=job,
+                            reason="login_required", instructions=nh_instructions,
+                            navigate_url=nh_url, duration_ms=duration_ms,
+                            headless=headless, ats_slug=ats_slug,
+                            total_workers=total_workers, model=model, dry_run=dry_run,
+                            no_hitl=no_hitl, chrome_proc=chrome_proc,
+                            add_event=add_event, update_state=update_state,
+                            stop_event=_stop_event,
                         )
-
-                        if no_hitl:
-                            add_event(f"[W{worker_id}] --no-hitl: parking 'login_required' and moving on")
-                            update_state(worker_id, last_action="parked: login_required")
+                        if hitl_outcome is None:
                             break
-
-                        job_hash = hashlib.sha256(job["url"].encode()).hexdigest()[:12]
-                        hitl_event = threading.Event()
-                        hitl_port = _start_hitl_listener(worker_id, hitl_event, job_hash)
-
-                        _inject_banner_for_worker(worker_id, port, job, "login_required", hitl_port,
-                                                 navigate_url=nh_url)
-                        from applypilot.apply.human_review import _start_done_watcher
-                        _watcher = _start_done_watcher(port, hitl_port, job_hash)
-                        notify_human_needed(job, "login_required", nh_url)
-                        add_event(f"[W{worker_id}] WAITING for human: login_required")
-                        update_state(worker_id, status="waiting_human",
-                                     last_action="WAITING: login_required")
-                        with _worker_state_lock:
-                            ws = _worker_state.get(worker_id)
-                        if ws is not None:
-                            _saved = None
-                            try:
-                                from applypilot.database import get_qa, close_connection
-                                _saved = get_qa(f"HITL:{job.get('site', '')}:login_required")
-                                close_connection()
-                            except Exception:
-                                pass
-                            ws.update({"status": "waiting_human", "reason": "login_required",
-                                       "instructions": nh_instructions,
-                                       "saved_instruction": _saved,
-                                       "hitl_watcher_proc": _watcher})
-                        _register_waiting(worker_id, "waiting_human")
-
-                        while not _stop_event.is_set():
-                            if hitl_event.wait(timeout=5.0):
-                                break
-                            if chrome_proc and chrome_proc.poll() is not None:
-                                add_event(f"[W{worker_id}] Chrome crashed during login HITL; relaunching...")
-                                try:
-                                    chrome_proc = launch_chrome(worker_id, port=port,
-                                                                headless=headless, ats_slug=ats_slug)
-                                    _inject_banner_for_worker(worker_id, port, job, "login_required",
-                                                              hitl_port, navigate_url=nh_url)
-                                except Exception:
-                                    logger.debug("Chrome relaunch during HITL failed", exc_info=True)
-                        _stop_hitl_listener(worker_id)
-                        _unregister_waiting(worker_id)
-                        if _stop_event.is_set():
-                            break
-
-                        reset_needs_human(job["url"])
-                        # Relaunch agent; retry up to 3× on transient errors after login
-                        for _login_attempt in range(3):
-                            add_event(f"[W{worker_id}] Human done, relaunching agent"
-                                      f" (attempt {_login_attempt + 1}/3)...")
-                            update_state(worker_id, status="applying",
-                                         last_action=f"relaunching after login (attempt {_login_attempt + 1})",
-                                         start_time=time.time(), actions=0)
-                            result, duration_ms, screening_qs = run_job(
-                                job, port=port, worker_id=worker_id,
-                                model=model, dry_run=dry_run, skip_tab_reset=True)
-                            _login_reason = result.split(":", 1)[-1] if ":" in result else result
-                            if _login_reason not in _HITL_TRANSIENT_ERRORS or _stop_event.is_set():
-                                break
-                            if _login_attempt < 2:
-                                add_event(f"[W{worker_id}] Transient ({_login_reason}), retrying in 30s...")
-                                time.sleep(30)
+                        result, duration_ms, screening_qs = hitl_outcome
                         relaunch = True
                         continue
 
@@ -2906,77 +2916,20 @@ def _worker_loop_body(
                         nh_instructions = _HITL_INSTRUCTIONS.get(
                             reason, f"Manual action required: {reason}"
                         )
-                        mark_needs_human(
-                            job["url"], reason, nh_url, nh_instructions, duration_ms
+
+                        hitl_outcome = _run_hitl(
+                            worker_id=worker_id, port=port, job=job,
+                            reason=reason, instructions=nh_instructions,
+                            navigate_url=nh_url, duration_ms=duration_ms,
+                            headless=headless, ats_slug=ats_slug,
+                            total_workers=total_workers, model=model, dry_run=dry_run,
+                            no_hitl=no_hitl, chrome_proc=chrome_proc,
+                            add_event=add_event, update_state=update_state,
+                            stop_event=_stop_event,
                         )
-
-                        if no_hitl:
-                            add_event(f"[W{worker_id}] --no-hitl: parking '{reason}' and moving on")
-                            update_state(worker_id, last_action=f"parked: {reason[:25]}")
+                        if hitl_outcome is None:
                             break
-
-                        job_hash = hashlib.sha256(job["url"].encode()).hexdigest()[:12]
-                        hitl_event = threading.Event()
-                        hitl_port = _start_hitl_listener(worker_id, hitl_event, job_hash)
-
-                        _inject_banner_for_worker(worker_id, port, job, reason, hitl_port,
-                                                 navigate_url=nh_url)
-                        from applypilot.apply.human_review import _start_done_watcher
-                        _watcher = _start_done_watcher(port, hitl_port, job_hash)
-                        notify_human_needed(job, reason, nh_url)
-                        add_event(f"[W{worker_id}] WAITING for human: {reason}")
-                        update_state(worker_id, status="waiting_human",
-                                     last_action=f"WAITING: {reason[:25]}")
-                        with _worker_state_lock:
-                            ws = _worker_state.get(worker_id)
-                        if ws is not None:
-                            _saved = None
-                            try:
-                                from applypilot.database import get_qa, close_connection
-                                _saved = get_qa(f"HITL:{job.get('site', '')}:{reason}")
-                                close_connection()
-                            except Exception:
-                                pass
-                            ws.update({"status": "waiting_human", "reason": reason,
-                                       "instructions": nh_instructions,
-                                       "saved_instruction": _saved,
-                                       "hitl_watcher_proc": _watcher})
-                        _register_waiting(worker_id, "waiting_human")
-
-                        while not _stop_event.is_set():
-                            if hitl_event.wait(timeout=5.0):
-                                break
-                            if chrome_proc and chrome_proc.poll() is not None:
-                                add_event(f"[W{worker_id}] Chrome crashed during HITL; relaunching...")
-                                try:
-                                    chrome_proc = launch_chrome(worker_id, port=port,
-                                                                headless=headless, ats_slug=ats_slug)
-                                    _inject_banner_for_worker(worker_id, port, job, reason,
-                                                              hitl_port, navigate_url=nh_url)
-                                except Exception:
-                                    logger.debug("Chrome relaunch during HITL failed", exc_info=True)
-                        _stop_hitl_listener(worker_id)
-                        _unregister_waiting(worker_id)
-                        if _stop_event.is_set():
-                            break
-
-                        reset_needs_human(job["url"])
-                        for _auto_hitl_attempt in range(3):
-                            add_event(f"[W{worker_id}] Human done, relaunching agent"
-                                      f" (attempt {_auto_hitl_attempt + 1}/3)...")
-                            update_state(worker_id, status="applying",
-                                         last_action=f"relaunching after {reason} HITL"
-                                                     f" (attempt {_auto_hitl_attempt + 1})",
-                                         start_time=time.time(), actions=0)
-                            result, duration_ms, screening_qs = run_job(
-                                job, port=port, worker_id=worker_id,
-                                model=model, dry_run=dry_run, skip_tab_reset=True)
-                            _auto_reason = result.split(":", 1)[-1] if ":" in result else result
-                            if _auto_reason not in _HITL_TRANSIENT_ERRORS or _stop_event.is_set():
-                                break
-                            if _auto_hitl_attempt < 2:
-                                add_event(f"[W{worker_id}] Transient ({_auto_reason}), retrying in 30s...")
-                                time.sleep(30)
+                        result, duration_ms, screening_qs = hitl_outcome
                         relaunch = True
                         continue
 
