@@ -582,7 +582,7 @@ def build_prompt(job: dict, tailored_resume: str,
     dest_dir.mkdir(parents=True, exist_ok=True)
     upload_doc = dest_dir / f"{name_slug}_Resume{doc_ext}"
     shutil.copy(str(src_doc), str(upload_doc))
-    pdf_path = str(upload_doc)
+    resume_doc_path = str(upload_doc)
 
     # --- Cover letter handling ---
     cover_letter_text = cover_letter or ""
@@ -699,7 +699,7 @@ Company: {job.get('site', 'Unknown')}
 Fit Score: {job.get('fit_score', 'N/A')}/10
 
 == FILES ==
-Resume {doc_format.upper()} (upload this): {pdf_path}
+Resume {doc_format.upper()} (upload this): {resume_doc_path}
 Cover Letter {doc_format.upper()} (upload if asked): {cl_upload_path or "N/A"}
 {optional_files_block}
 
@@ -841,7 +841,7 @@ in the KNOWN SCREENING ANSWERS section. The form will still be open in the brows
 2. browser_snapshot to read the page. Then run CAPTCHA DETECT (see CAPTCHA section). If a CAPTCHA is found, solve it before continuing.
 3. LOCATION CHECK. Read the page for location info. If not eligible, output RESULT and stop.
 4. Find and click the Apply button. If email-only (page says "email resume to X"):
-   - send_email with subject "Application for {job['title']} -- {display_name}", body = 2-3 sentence pitch + contact info, attach resume: ["{pdf_path}"]
+   - send_email with subject "Application for {job['title']} -- {display_name}", body = 2-3 sentence pitch + contact info, attach resume: ["{resume_doc_path}"]
    - Output RESULT:APPLIED. Done.
    After clicking Apply: browser_snapshot. Run CAPTCHA DETECT -- many sites trigger CAPTCHAs right after the Apply click. If found, solve before continuing.
 5. Login wall?
@@ -932,8 +932,8 @@ in the KNOWN SCREENING ANSWERS section. The form will still be open in the brows
        - SMS/text verification: You CANNOT receive SMS codes. If the site ONLY offers phone/SMS verification with NO email option visible, output RESULT:NEEDS_HUMAN:sms_verification:{{current_page_url}} immediately.
    5i. After login, run browser_tabs action "list" again. Switch back to the application tab if needed.
    5j. All failed? Output RESULT:FAILED:login_issue. Do not loop.
-6. Upload resume. ALWAYS upload fresh -- delete any existing resume first, then browser_file_upload with the PDF path above. This is the tailored resume for THIS job. Non-negotiable.
-7. Upload cover letter if there's a field for it. Text field -> paste the cover letter text. File upload -> use the cover letter PDF path.
+6. Upload resume. ALWAYS upload fresh -- delete any existing resume first, then browser_file_upload with the {doc_format.upper()} path above. This is the tailored resume for THIS job. Non-negotiable.
+7. Upload cover letter if there's a field for it. Text field -> paste the cover letter text. File upload -> use the cover letter {doc_format.upper()} path.
 8. Check ALL pre-filled fields. ATS systems parse your resume and auto-fill -- it's often WRONG.
    - "Current Job Title" or "Most Recent Title" -> use the title from the TAILORED RESUME summary, NOT whatever the parser guessed.
    - Compare every other field to the APPLICANT PROFILE. Fix mismatches. Fill empty fields.
