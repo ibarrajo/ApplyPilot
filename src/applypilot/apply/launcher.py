@@ -1366,7 +1366,7 @@ def gen_prompt(target_url: str, min_score: int | None = None, max_score: int | N
     if txt_path and txt_path.exists():
         resume_text = txt_path.read_text(encoding="utf-8")
 
-    prompt = prompt_mod.build_prompt(job=job, tailored_resume=resume_text, doc_format=_doc_format)
+    prompt = prompt_mod.build_prompt(job=job, tailored_resume=resume_text, worker_id=worker_id, doc_format=_doc_format)
 
     # Release the lock so the job stays available
     release_lock(job["url"])

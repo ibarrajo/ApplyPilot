@@ -582,7 +582,7 @@ def build_prompt(job: dict, tailored_resume: str,
     # Copy to a clean filename for upload (recruiters see the filename)
     full_name = personal["full_name"]
     name_slug = full_name.replace(" ", "_")
-    dest_dir = config.APPLY_WORKER_DIR / "current"
+    dest_dir = config.APPLY_WORKER_DIR / f"worker-{worker_id}"
     dest_dir.mkdir(parents=True, exist_ok=True)
     upload_doc = dest_dir / f"{name_slug}_Resume{doc_ext}"
     shutil.copy(str(src_doc), str(upload_doc))
