@@ -2572,10 +2572,10 @@ def _worker_loop_body(
             if ws is not None:
                 ws["chrome_pid"] = chrome_proc.pid
 
-            # Inject status badge into every page (replaces Chrome extension —
-            # Extension popup (loaded via --load-extension) handles status display.
-            # The inject_status_badge overlay was removed — it showed "offline"
-            # on startup before the first poll and provided no value over the popup.
+            # Status display: handled by the Chrome extension popup (loaded via
+            # --load-extension). No CDP badge injection on the always-on path —
+            # on-demand HITL banners (see human_review._inject_banner) cover the
+            # few moments an operator needs a visible prompt.
 
             # Update always-on worker state so the extension popup knows the current job
             with _worker_state_lock:
