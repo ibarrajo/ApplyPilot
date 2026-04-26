@@ -193,6 +193,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     appendAction(msg.event).then(() => sendResponse({ ok: true }));
     return true;
   }
+  if (msg.type === 'get-action-log') {
+    const wid = msg.workerId ?? (typeof WORKER_CONFIG !== 'undefined' ? WORKER_CONFIG.workerId : null);
+    chrome.storage.local.get(['actionLog']).then(({ actionLog }) => {
+      const events = (actionLog && actionLog[wid]) || [];
+      sendResponse({ events });
+    });
+    return true;
+  }
 });
 
 loadTabSet().then(seedPrimaryTab);

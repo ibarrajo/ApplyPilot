@@ -128,6 +128,62 @@ window.__ap_form_snapshot = function () {
   return fields;
 };
 
+// --- Pause-cycle Done detection (spec §4.1) -----------------------------
+//
+// The CDP-injected banner sets `window.__ap_hitl_done = HASH` and POSTs
+// /api/done/{HASH} when the user clicks Done. We detect the same flag
+// transitioning from null→hash and post our action-log + form snapshots
+// to /api/action-log/{HASH} so the launcher can thread it into the
+// agent's resume prompt as a USER ACTIONS DURING PAUSE section.
+//
+// We POST BEFORE the Node-based watcher's /api/done call lands by piggy-
+// backing on the same flag — the order is best-effort, but the launcher
+// caches the action log payload by hash and reads it lazily after
+// hitl_event fires, so race-ordering doesn't matter as long as both posts
+// arrive before _run_hitl reaches its run_job call.
+
+let _lastHitlHash = null;
+
+async function _maybePostActionLog() {
+  const h = window.__ap_hitl_done;
+  if (!h || h === _lastHitlHash) return;
+  _lastHitlHash = h;
+
+  // Fetch the action-log buffer for this worker from the SW.
+  let events = [];
+  try {
+    const reply = await chrome.runtime.sendMessage({
+      type: 'get-action-log',
+      workerId: _myWorkerId,
+    });
+    if (reply && Array.isArray(reply.events)) events = reply.events;
+  } catch (_e) { /* SW unavailable — post empty log */ }
+
+  // Form snapshot for THIS tab keyed by current URL.
+  const snapshots = {};
+  try {
+    snapshots[location.href] = window.__ap_form_snapshot();
+  } catch (_e) { /* fail silently */ }
+
+  if (!_workerPort) await findWorker();
+  if (!_workerPort) return;
+
+  try {
+    await fetch(`http://localhost:${_workerPort}/api/action-log/${h}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events, snapshots }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (_e) { /* best effort */ }
+}
+
+function _installDoneWatcher() {
+  // Poll every 500ms while in-set. Cheap, page-local, no network unless
+  // the flag flips.
+  setInterval(_maybePostActionLog, 500);
+}
+
 // --- "Add to ApplyPilot" pill (existing feature, preserved) -------------
 
 function createPill() {
@@ -249,7 +305,10 @@ async function init() {
     return;
   }
 
-  if (_inSet) _installEventCapture();
+  if (_inSet) {
+    _installEventCapture();
+    _installDoneWatcher();
+  }
 
   // Pill is job-page-gated as before.
   if (!looksLikeJobPage()) return;

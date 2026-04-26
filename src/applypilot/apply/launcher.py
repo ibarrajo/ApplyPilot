@@ -129,6 +129,14 @@ _hitl_server_lock = threading.Lock()
 # apply UX overhaul spec). Only one worker at a time gets the stdin reader,
 # to avoid contention when N workers are paused simultaneously.
 _stdin_fallback_lock = threading.Lock()
+
+# Action-log cache for the pause-cycle data flow (spec §4.1 / §4.4). Content
+# script POSTs /api/action-log/{hash} with {events, snapshots} when the user
+# clicks the banner Done button. _run_hitl pops the matching entry after
+# hitl_event fires and threads it into the resume prompt as a USER ACTIONS
+# DURING PAUSE section.
+_action_log_cache: dict[str, dict] = {}
+_action_log_cache_lock = threading.Lock()
 # Always-on per-worker HTTP servers (one per worker, started once in worker_loop)
 _worker_servers: dict[int, HTTPServer] = {}
 _worker_server_lock = threading.Lock()
@@ -400,6 +408,8 @@ def _start_worker_listener(worker_id: int) -> int:
                 self._handle_handback()
             elif self.path.startswith("/api/done"):
                 self._handle_done()
+            elif self.path.startswith("/api/action-log/"):
+                self._handle_action_log()
             elif self.path == "/api/add-job":
                 self._handle_add_job()
             elif self.path == "/api/jobs/mark":
@@ -705,6 +715,25 @@ def _start_worker_listener(worker_id: int) -> int:
                 # before the worker loop picks it up and changes status to "applying".
                 state["status"] = "resuming"
                 hitl_evt.set()
+            self._text_ok()
+
+        def _handle_action_log(self):
+            """Stash a content-script-posted action log keyed by job hash.
+
+            Hash comes from the URL: /api/action-log/{hash}. Body is JSON:
+              {"events": [...], "snapshots": {tab_url: {field: value, ...}}}
+            _run_hitl pops the cache entry after the user-Done signal so the
+            log can be threaded into the resume prompt.
+            """
+            hash_ = self.path.rsplit("/", 1)[-1].split("?", 1)[0].strip()
+            if not hash_:
+                self.send_response(400)
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                return
+            payload = self._read_body()
+            with _action_log_cache_lock:
+                _action_log_cache[hash_] = payload
             self._text_ok()
 
         def _handle_jobs_list(self):
@@ -2469,6 +2498,70 @@ def _probe_for_reconnect(worker_id: int, port: int) -> tuple[int | None, str | N
         return pid, None
 
 
+def _format_action_log(payload: dict) -> str | None:
+    """Render a USER ACTIONS DURING PAUSE prompt section from a content-script
+    POST to /api/action-log/{hash}.
+
+    Payload shape:
+      {
+        "events":    [{"type": "click"|"submit"|"nav", "t": <ms>, ...}, ...],
+        "snapshots": {<tab_url>: {<field>: <value>, ...}, ...},
+      }
+
+    Returns None if the payload has no usable content. Spec §4.4.
+    """
+    if not isinstance(payload, dict):
+        return None
+    events = payload.get("events") or []
+    snapshots = payload.get("snapshots") or {}
+    if not events and not snapshots:
+        return None
+
+    lines: list[str] = []
+    if events:
+        lines.append("Timeline (in tabs the user touched during pause):")
+        # Find a t0 to show offsets, falling back to first-event-as-zero.
+        t0 = min((int(e.get("t") or 0) for e in events), default=0)
+        for e in events[-50:]:  # cap last 50 events in the prompt
+            t = int(e.get("t") or 0)
+            offset_ms = max(0, t - t0)
+            mins, secs = divmod(offset_ms // 1000, 60)
+            ts = f"+{mins}:{secs:02d}"
+            kind = e.get("type", "?")
+            if kind == "click":
+                txt = (e.get("text") or "").strip()[:48]
+                href = e.get("href")
+                if href:
+                    lines.append(f"  {ts}  Clicked '{txt}' → {href[:80]}")
+                else:
+                    lines.append(f"  {ts}  Clicked '{txt}'")
+            elif kind == "submit":
+                fcount = len(e.get("fields") or [])
+                lines.append(f"  {ts}  Submitted form ({fcount} fields)")
+            elif kind == "nav":
+                mode = e.get("mode", "")
+                url = (e.get("url") or "")[:80]
+                lines.append(f"  {ts}  Nav ({mode}) {url}")
+            else:
+                lines.append(f"  {ts}  {kind}")
+
+    if snapshots:
+        lines.append("")
+        lines.append("Form values now in tabs:")
+        for tab_url, fields in snapshots.items():
+            if not isinstance(fields, dict) or not fields:
+                continue
+            lines.append(f"  {tab_url[:80]}:")
+            for k, v in list(fields.items())[:20]:  # cap fields per tab
+                vs = str(v)[:80]
+                lines.append(f"    {k}: {vs}")
+
+    if not lines:
+        return None
+    body = "\n".join(lines)
+    return f"USER ACTIONS DURING PAUSE:\n{body}"
+
+
 def _run_hitl(
     worker_id: int,
     port: int,
@@ -2609,6 +2702,14 @@ def _run_hitl(
     # 9. Reset DB row.
     reset_needs_human(job["url"])
 
+    # 9b. Pop the action log POSTed by the extension during the pause and
+    # format it for the agent's resume prompt (spec §4.4). If no log was
+    # posted (extension not ready, or user used the stdin fallback), this
+    # is a no-op and we resume without USER ACTIONS context.
+    with _action_log_cache_lock:
+        log_payload = _action_log_cache.pop(job_hash, None)
+    action_log_section = _format_action_log(log_payload) if log_payload else None
+
     # 10. Re-launch agent with transient-error retry.
     last_result = None
     last_dur = 0
@@ -2623,7 +2724,8 @@ def _run_hitl(
                          start_time=time.time(), actions=0)
         last_result, last_dur, last_qs = run_job(
             job, port=port, worker_id=worker_id,
-            model=model, dry_run=dry_run, skip_tab_reset=True)
+            model=model, dry_run=dry_run, skip_tab_reset=True,
+            extra_context=action_log_section)
         _hitl_reason = last_result.split(":", 1)[-1] if ":" in last_result else last_result
         if _hitl_reason not in _HITL_TRANSIENT_ERRORS:
             break
