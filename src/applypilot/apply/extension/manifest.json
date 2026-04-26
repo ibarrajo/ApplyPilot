@@ -4,9 +4,8 @@
   "version": "2.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3lGZxTZhRpY3ORUXkQ2+Dq5Xsc9AGaxza5/dBIIrZaJYDEhROh2o/GqovE8ReDZp0ydYqd+f/V0QmYW4jBC8DC5aYrPyViXW+kFBAMJoMACNll+JP2E16IRRQSq0+Npwc3TGyEctwWBCVrW1gt7XLrCIl/8s7yd8Xhc5AI5oE1SUUIhBylgb/5nVjEK30Q7gl3ahTkWMhy7pqYvaygCpBpEQc5l86EqyFDoS1uOUsaZPxRYG83E7uny0OO5E9LYw9ZDw62aIIuUeSV5MFpo87pQ+aTzmatrq9Vx1OLJ4b3f3cAJ5xlEddO3IfbLph9yQw/rnHmy8z2OIjA5T73DBLwIDAQAB",
   "description": "Monitor and control ApplyPilot apply workers from any Chrome window.",
-  "permissions": ["storage", "alarms", "activeTab", "tabs"],
+  "permissions": ["storage", "alarms", "activeTab", "tabs", "scripting"],
   "host_permissions": ["http://localhost/*", "https://*/*", "http://*/*"],
-  "web_accessible_resources": [],
   "content_scripts": [
     {
       "matches": ["https://*/*", "http://*/*"],
@@ -15,6 +14,7 @@
       "all_frames": false
     }
   ],
+  "web_accessible_resources": [],
   "background": {
     "service_worker": "background.js"
   },

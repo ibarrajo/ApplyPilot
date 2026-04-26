@@ -102,6 +102,119 @@ if (typeof WORKER_CONFIG !== 'undefined' && WORKER_CONFIG.workerId !== null) {
 }
 
 // ---------------------------------------------------------------------------
+// Stealth init script injection (spec §2.2 — patchright CDP-side equivalent)
+// ---------------------------------------------------------------------------
+// Inject an anti-fingerprint script into the MAIN world of every http/https
+// page, BEFORE page JS runs. We use chrome.scripting.executeScript instead
+// of declarative content_scripts because:
+//   (a) Declarative `world: "MAIN"` was unreliable on CfT 148 in our tests
+//   (b) <script> tag injection from an isolated content script gets blocked
+//       by page CSP on real-world targets (Workday, LinkedIn, etc.)
+//   (c) chrome.scripting.executeScript with world:"MAIN" runs in the page's
+//       JS context with extension privileges, bypassing CSP.
+//
+// Triggered on chrome.tabs.onUpdated when status === "loading" so the
+// override lands before the page's first frame executes.
+
+function _stealthFunction() {
+  // Marker so test/debug code can verify the injection landed.
+  try { window.__ap_stealth_loaded = true; } catch (_e) {}
+
+  // 1. navigator.webdriver — canonical automation indicator.
+  try {
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => undefined,
+      configurable: true,
+    });
+  } catch (_e) {}
+
+  // 2. chrome.runtime presence — real Chrome exposes this on every page.
+  try {
+    if (!window.chrome) window.chrome = {};
+    if (!window.chrome.runtime) {
+      window.chrome.runtime = {
+        PlatformOs: { LINUX: 'linux', MAC: 'mac', WIN: 'win', ANDROID: 'android' },
+        PlatformArch: { ARM: 'arm', X86_32: 'x86-32', X86_64: 'x86-64' },
+        OnInstalledReason: { INSTALL: 'install', UPDATE: 'update' },
+        OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update' },
+      };
+    }
+  } catch (_e) {}
+
+  // 3. navigator.plugins — non-empty array (matches real Chrome). Real
+  // PluginArray is hard to fake exactly; fingerprinting libraries mostly
+  // just check `length > 0`, so a plain Array suffices.
+  try {
+    const fakePlugins = [
+      { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer',
+        description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai',
+        description: 'Portable Document Format' },
+    ];
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => fakePlugins,
+      configurable: true,
+    });
+  } catch (_e) {}
+
+  // 4. navigator.languages — non-empty array.
+  try {
+    if (!navigator.languages || navigator.languages.length === 0) {
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+        configurable: true,
+      });
+    }
+  } catch (_e) {}
+
+  // 5. WebGL vendor/renderer — disguise SwiftShader.
+  try {
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function (parameter) {
+      if (parameter === 37445) return 'Intel Inc.';
+      if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+      return getParameter.apply(this, arguments);
+    };
+  } catch (_e) {}
+
+  // 6. Notification permissions API — match real-Chrome variability.
+  try {
+    const orig = navigator.permissions && navigator.permissions.query;
+    if (orig) {
+      navigator.permissions.query = function (params) {
+        if (params && params.name === 'notifications') {
+          return Promise.resolve({
+            state: typeof Notification !== 'undefined' ? Notification.permission : 'default',
+            onchange: null,
+          });
+        }
+        return orig.call(navigator.permissions, params);
+      };
+    }
+  } catch (_e) {}
+}
+
+async function _injectStealth(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: _stealthFunction,
+      world: 'MAIN',
+      injectImmediately: true,
+    });
+  } catch (_e) {
+    // Most failures are expected: chrome:// pages, extension pages, the
+    // PDF viewer, and tabs that closed before injection landed. Silent.
+  }
+}
+
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status !== 'loading') return;
+  if (!tab.url || !/^https?:/.test(tab.url)) return;
+  _injectStealth(tabId);
+});
+
+// ---------------------------------------------------------------------------
 // Per-job tab tracking (spec §3.2 — audit #3 fix)
 // ---------------------------------------------------------------------------
 // Each worker has a "primary tab" (the first tab loaded under this profile).
