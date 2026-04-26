@@ -101,6 +101,136 @@ if (typeof WORKER_CONFIG !== 'undefined' && WORKER_CONFIG.workerId !== null) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-job tab tracking (spec §3.2 — audit #3 fix)
+// ---------------------------------------------------------------------------
+// Each worker has a "primary tab" (the first tab loaded under this profile).
+// Any tab opened from the primary or its descendants — tracked via
+// `openerTabId` — joins the worker's in-set. Tabs the user opens manually
+// (no opener) stay out-of-set. Used by content.js to gate event capture
+// and (eventually) banner rendering.
+//
+// State shape in chrome.storage.local:
+//   tabSet: { [workerId]: number[] }   // tab IDs currently in-set
+//
+// In-memory mirror loaded on SW init and kept synchronized with storage.
+
+const _tabSet = new Map(); // workerId -> Set<tabId>
+
+async function loadTabSet() {
+  try {
+    const { tabSet } = await chrome.storage.local.get(['tabSet']);
+    if (tabSet) {
+      for (const [wid, tabs] of Object.entries(tabSet)) {
+        _tabSet.set(Number(wid), new Set(tabs));
+      }
+    }
+  } catch (_e) { /* SW init race — fine, will be empty */ }
+}
+
+async function persistTabSet() {
+  const obj = {};
+  for (const [wid, tabs] of _tabSet) {
+    obj[wid] = Array.from(tabs);
+  }
+  try { await chrome.storage.local.set({ tabSet: obj }); } catch (_e) {}
+}
+
+function findOwningWorker(openerTabId) {
+  if (openerTabId == null) return null;
+  for (const [wid, tabs] of _tabSet) {
+    if (tabs.has(openerTabId)) return wid;
+  }
+  return null;
+}
+
+chrome.tabs.onCreated.addListener(async (tab) => {
+  if (tab.openerTabId == null) return;
+  const owner = findOwningWorker(tab.openerTabId);
+  if (owner == null) return;
+  _tabSet.get(owner).add(tab.id);
+  await persistTabSet();
+});
+
+chrome.tabs.onRemoved.addListener(async (tabId) => {
+  let changed = false;
+  for (const tabs of _tabSet.values()) {
+    if (tabs.delete(tabId)) changed = true;
+  }
+  if (changed) await persistTabSet();
+});
+
+// On SW init: if WORKER_CONFIG identifies us as a specific worker's profile,
+// seed the in-set with the currently-active tab as the primary.
+async function seedPrimaryTab() {
+  if (typeof WORKER_CONFIG === 'undefined' || WORKER_CONFIG.workerId == null) {
+    return;
+  }
+  const wid = WORKER_CONFIG.workerId;
+  if (!_tabSet.has(wid)) _tabSet.set(wid, new Set());
+  // Only seed if the set is currently empty (avoid clobbering on SW restart).
+  if (_tabSet.get(wid).size > 0) return;
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    for (const t of tabs) _tabSet.get(wid).add(t.id);
+    await persistTabSet();
+  } catch (_e) { /* fine */ }
+}
+
+// Expose tab-set membership to content scripts via runtime.sendMessage.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'is-in-set') {
+    const tabId = sender.tab && sender.tab.id;
+    if (tabId == null) { sendResponse({ inSet: false }); return false; }
+    let inSet = false;
+    for (const tabs of _tabSet.values()) {
+      if (tabs.has(tabId)) { inSet = true; break; }
+    }
+    sendResponse({ inSet, workerId: WORKER_CONFIG && WORKER_CONFIG.workerId });
+    return false;
+  }
+  if (msg.type === 'append-action') {
+    appendAction(msg.event).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+});
+
+loadTabSet().then(seedPrimaryTab);
+
+// ---------------------------------------------------------------------------
+// Action-log ring buffer (spec §4.4)
+// ---------------------------------------------------------------------------
+// Filtered events captured by content.js (clicks, navs, form submits, tab
+// opens). Stored per-worker as a ring buffer in chrome.storage.local.
+// Capped at 200 events / 64KB total per worker per pause cycle.
+//
+// Shape:
+//   actionLog: { [workerId]: Array<{type, t, ...}> }
+
+const ACTION_LOG_MAX_EVENTS = 200;
+const ACTION_LOG_MAX_BYTES  = 64 * 1024;
+
+async function appendAction(event) {
+  if (typeof WORKER_CONFIG === 'undefined' || WORKER_CONFIG.workerId == null) return;
+  const wid = WORKER_CONFIG.workerId;
+  try {
+    const { actionLog } = await chrome.storage.local.get(['actionLog']);
+    const logs = actionLog || {};
+    const buf = logs[wid] || [];
+    buf.push({ ...event, t: Date.now() });
+    // Cap by event count.
+    while (buf.length > ACTION_LOG_MAX_EVENTS) buf.shift();
+    // Cap by serialized size.
+    while (buf.length > 1) {
+      const size = new TextEncoder().encode(JSON.stringify(buf)).length;
+      if (size <= ACTION_LOG_MAX_BYTES) break;
+      buf.shift();
+    }
+    logs[wid] = buf;
+    await chrome.storage.local.set({ actionLog: logs });
+  } catch (_e) { /* SW write race — fine, drop event */ }
+}
+
 // Poll on alarm — 1-minute period (Chrome's minimum for alarms).
 // The setInterval below handles 3s polling while the SW is alive.
 // The alarm acts as a restart trigger: Chrome wakes the SW to fire the alarm,

@@ -1,13 +1,24 @@
-// ApplyPilot — in-page capture button
-// Injected on all http/https pages. Discovers a live apply worker (ports 7380–7384)
-// and shows a small floating pill when one is reachable.
+// ApplyPilot content script — runs on every http(s) page.
+//
+// Two responsibilities:
+//   1. (always) On in-set tabs, capture filtered user events to the
+//      action-log ring buffer. Spec §3.2 / §4.4.
+//   2. (job pages only, in-set) Show the "Add to ApplyPilot" pill so the
+//      user can capture new jobs they're browsing.
+//
+// "In-set" = this tab is part of a worker's per-job tab set, tracked by
+// background.js via openerTabId chains.
 
 const BASE_WORKER_PORT = 7380;
 const MAX_WORKERS = 5;
-let _workerPort = null; // port of the live worker we found
+
+let _inSet = false;          // is this tab in a worker's in-set?
+let _myWorkerId = null;      // which worker owns us (null if not in-set)
+let _workerPort = null;      // port of the live worker we found
+let _pill = null;
+let _state = 'idle';
 
 // --- Job page detection --------------------------------------------------
-// Show the button only on pages that look like a job posting.
 const JOB_URL_PATTERNS = [
   /\/jobs?\//i, /\/careers?\//i, /\/job-detail/i, /\/position/i,
   /\/openings?\//i, /\/apply/i, /\/posting/i, /\/vacancy/i,
@@ -19,21 +30,105 @@ const JOB_URL_PATTERNS = [
 function looksLikeJobPage() {
   const url = location.href;
   if (JOB_URL_PATTERNS.some(re => re.test(url))) return true;
-  // Fallback: check page title for job-like keywords
   const title = document.title.toLowerCase();
   return /engineer|developer|devops|platform|backend|frontend|staff|principal|senior/.test(title)
     && /job|position|opening|career|apply/.test(title);
 }
 
-if (!looksLikeJobPage()) {
-  // Not a job page — don't inject anything
-  throw new Error('not a job page');  // stops this content script cleanly
+// --- Action-log event capture (spec §3.2 / §4.4) -------------------------
+//
+// Filtered to "meaningful" events only — button-target clicks, anchor
+// navigations, form submits, tab opens. Body/scroll/focus/keystroke
+// noise is dropped. Per-event SW IPC via chrome.runtime.sendMessage —
+// the SW maintains the actual ring buffer in chrome.storage.local.
+
+function _send(event) {
+  try {
+    chrome.runtime.sendMessage({ type: 'append-action', event });
+  } catch (_e) { /* SW restarting — drop event */ }
 }
 
-// --- UI -----------------------------------------------------------------
+function _captureClick(e) {
+  // Only meaningful clicks: buttons, anchors, role=button, [type=submit].
+  let el = e.target;
+  while (el && el !== document.body) {
+    const tag = (el.tagName || '').toLowerCase();
+    const role = el.getAttribute && el.getAttribute('role');
+    const type = el.getAttribute && el.getAttribute('type');
+    if (tag === 'button' || tag === 'a' || role === 'button' ||
+        type === 'submit' || type === 'button') {
+      _send({
+        type: 'click',
+        target: tag,
+        text: (el.innerText || '').trim().slice(0, 80),
+        href: el.href || null,
+        url: location.href,
+      });
+      return;
+    }
+    el = el.parentElement;
+  }
+}
 
-let _pill = null;
-let _state = 'idle'; // idle | loading | success | exists | error
+function _captureSubmit(e) {
+  const form = e.target;
+  const fields = [];
+  if (form && form.elements) {
+    for (const el of form.elements) {
+      if (!el.name && !el.id) continue;
+      // Don't log password values.
+      const val = el.type === 'password' ? '***' : (el.value || '').slice(0, 64);
+      fields.push({ name: el.name || el.id, value: val });
+    }
+  }
+  _send({ type: 'submit', fields, url: location.href });
+}
+
+function _captureNavigation(navType) {
+  _send({ type: 'nav', mode: navType, url: location.href });
+}
+
+function _installEventCapture() {
+  // Click: bubble phase, document-level (catches everything not
+  // stop-propagated by the page).
+  document.addEventListener('click', _captureClick, { capture: true, passive: true });
+  document.addEventListener('submit', _captureSubmit, { capture: true, passive: true });
+
+  // Navigation: history pushState/replaceState + popstate. Initial
+  // pageload is logged via the script bootstrap below.
+  const _ps = history.pushState;
+  history.pushState = function () {
+    _ps.apply(this, arguments);
+    _captureNavigation('pushState');
+  };
+  const _rs = history.replaceState;
+  history.replaceState = function () {
+    _rs.apply(this, arguments);
+    _captureNavigation('replaceState');
+  };
+  window.addEventListener('popstate', () => _captureNavigation('popstate'));
+
+  // Initial page entry.
+  _captureNavigation('initial');
+}
+
+// Read form-field final values for the snapshot Done payload (spec §4.1
+// step 5). Skips passwords. Capped at 64 chars per value to keep the
+// snapshot small.
+window.__ap_form_snapshot = function () {
+  const fields = {};
+  for (const el of document.querySelectorAll('input, select, textarea')) {
+    if (!el.name && !el.id) continue;
+    if (el.type === 'password') continue;
+    if (el.type === 'hidden') continue;
+    const key = el.name || el.id;
+    const val = (el.value || '').slice(0, 200);
+    if (val) fields[key] = val;
+  }
+  return fields;
+};
+
+// --- "Add to ApplyPilot" pill (existing feature, preserved) -------------
 
 function createPill() {
   const pill = document.createElement('div');
@@ -84,27 +179,9 @@ function setPillState(state, msg) {
   _pill.style.borderColor = cfg.border;
   _pill.textContent = cfg.text;
 
-  // Auto-reset to idle after 4s for non-idle states
   if (state !== 'idle' && state !== 'loading') {
     setTimeout(() => setPillState('idle'), 4000);
   }
-}
-
-// --- Capture logic -------------------------------------------------------
-
-function getDescription() {
-  // Grab up to 3000 chars of visible job description text (best-effort)
-  const selectors = [
-    '[class*="description"]', '[class*="job-desc"]', '[class*="posting"]',
-    'article', 'main', '.content', '#content',
-  ];
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el && el.innerText && el.innerText.length > 100) {
-      return el.innerText.slice(0, 3000).trim();
-    }
-  }
-  return '';
 }
 
 async function captureJob() {
@@ -112,9 +189,8 @@ async function captureJob() {
   setPillState('loading');
 
   const url   = location.href;
-  const title = document.title.replace(/\s*[-|].*$/, '').trim(); // strip "| Company" suffix
+  const title = document.title.replace(/\s*[-|].*$/, '').trim();
 
-  // Re-discover worker if needed
   if (!_workerPort) await findWorker();
   if (!_workerPort) {
     setPillState('error', 'No active workers');
@@ -140,12 +216,10 @@ async function captureJob() {
       setPillState('error', 'Unexpected response');
     }
   } catch (err) {
-    _workerPort = null; // reset so next click re-discovers
+    _workerPort = null;
     setPillState('error', err.message.slice(0, 40));
   }
 }
-
-// --- Discover a live worker and inject pill -------------------------------
 
 async function findWorker() {
   for (let i = 0; i < MAX_WORKERS; i++) {
@@ -160,16 +234,34 @@ async function findWorker() {
   return null;
 }
 
+// --- Bootstrap ----------------------------------------------------------
+
 async function init() {
+  // Ask the SW whether this tab belongs to a worker's in-set. If yes,
+  // install the action-log event capture (regardless of whether the
+  // page looks like a job posting). The pill stays job-page-gated.
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: 'is-in-set' });
+    _inSet = !!(reply && reply.inSet);
+    _myWorkerId = (reply && reply.workerId) ?? null;
+  } catch (_e) {
+    // SW unavailable — silent fallback (no event capture, no pill).
+    return;
+  }
+
+  if (_inSet) _installEventCapture();
+
+  // Pill is job-page-gated as before.
+  if (!looksLikeJobPage()) return;
+
   const port = await findWorker();
-  if (!port) return; // no workers running — stay silent
+  if (!port) return;
 
   _pill = createPill();
   setPillState('idle');
-  document.body.appendChild(_pill);
+  if (document.body) document.body.appendChild(_pill);
 }
 
-// Run after DOM is ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
