@@ -321,7 +321,7 @@ class _ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
-def _start_worker_listener(worker_id: int) -> int:
+def _start_worker_listener(worker_id: int, no_hitl: bool = False) -> int:
     """Start the always-on HTTP server for a worker.
 
     This server starts once at the beginning of worker_loop() and lives for
@@ -335,6 +335,12 @@ def _start_worker_listener(worker_id: int) -> int:
         GET  /api/task-stream    — SSE stream of mini Claude output
         POST /api/handback       — resume main agent (optionally with context)
         POST /api/done/{hash}    — HITL "done" signal (banner button)
+        POST /api/action-log/{hash} — extension posts {events, snapshots} for resume prompt
+
+    Args:
+        worker_id: Numeric worker identifier.
+        no_hitl: --no-hitl flag value, surfaced in /api/status as `noHitl`
+            so the popup can show a "park-and-move-on" indicator.
 
     Returns:
         Port the server is listening on.
@@ -357,6 +363,7 @@ def _start_worker_listener(worker_id: int) -> int:
         "chrome_pid": None,
         "last_focused": 0,
         "history": [],  # list of completed job summaries for the homepage log
+        "no_hitl": no_hitl,
     }
 
     takeover_event = threading.Event()
@@ -591,6 +598,7 @@ def _start_worker_listener(worker_id: int) -> int:
                 "savedInstruction": state.get("saved_instruction"),
                 "chromePid": state.get("chrome_pid"),
                 "lastFocused": state.get("last_focused", 0),
+                "noHitl": bool(state.get("no_hitl", False)),
             })
 
         def _handle_log(self):
@@ -2780,7 +2788,7 @@ def worker_loop(worker_id: int = 0, limit: int = 1,
     port = BASE_CDP_PORT + worker_id
 
     # Start always-on worker HTTP listener (used by Chrome extension + HITL banner)
-    _start_worker_listener(worker_id)
+    _start_worker_listener(worker_id, no_hitl=no_hitl)
     try:
         return _worker_loop_body(
             worker_id, limit, target_url, min_score, max_score, max_age_days,

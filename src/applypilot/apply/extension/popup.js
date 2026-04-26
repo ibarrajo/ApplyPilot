@@ -259,6 +259,7 @@ function renderCard(w) {
           <div class="job-title">${esc(w.jobTitle || '—')}</div>
           <div class="job-meta">
             <span class="status-label ${statusClass}">${statusText}</span>
+            ${w.noHitl ? ' · <span title="--no-hitl mode: pauses auto-park instead of waiting" style="color:#fbbf24">⏭ no-hitl</span>' : ''}
             ${w.jobCompany ? ` · ${esc(w.jobCompany)}` : ''}${w.jobSite ? ` · ${esc(w.jobSite)}` : ''}
           </div>
         </div>
