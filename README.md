@@ -6,7 +6,6 @@
 
 **Applied to 1,000 jobs in 2 days. Fully autonomous. Open source.**
 
-[![PyPI version](https://img.shields.io/pypi/v/applypilot?color=blue)](https://pypi.org/project/applypilot/)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/ibarrajo/ApplyPilot?style=social)](https://github.com/ibarrajo/ApplyPilot)
@@ -25,12 +24,15 @@ https://github.com/user-attachments/assets/7ee3417f-43d4-4245-9952-35df1e77f2df
 
 ApplyPilot is a 7-stage autonomous job application pipeline. It discovers jobs across 6+ boards, scores them against your resume with AI, tailors your resume per job, writes cover letters, submits applications, and then monitors your inbox for responses — all without you lifting a finger.
 
-Three commands. That's it.
+Clone this fork and install it from source so you get the code documented here (the `applypilot` package on PyPI is the upstream Pickle-Pixel release):
 
 ```bash
-pip install applypilot
-pip install --no-deps python-jobspy    # separate install (broken numpy pin in metadata)
-pip install pydantic tls-client requests markdownify regex  # jobspy runtime deps
+git clone https://github.com/ibarrajo/ApplyPilot.git
+cd ApplyPilot
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -e .
+
 applypilot init          # one-time setup: resume, profile, preferences, API keys
 applypilot run           # discover > enrich > score > tailor > cover letters
 applypilot apply         # autonomous browser-driven submission
@@ -104,8 +106,6 @@ Each stage is independent. Run them all or pick what you need.
 | OpenAI API key | Fallback if Gemini rate limits are hit |
 | CapSolver API key | Solves CAPTCHAs during auto-apply (hCaptcha, reCAPTCHA, Turnstile) |
 
-> **Note:** python-jobspy is installed separately with `--no-deps` because it pins an exact numpy version in its metadata that conflicts with pip's resolver. It works fine at runtime.
-
 ---
 
 ## Configuration
@@ -170,11 +170,12 @@ Key behaviors:
 - **Per-worker status badge**: a floating badge is injected into Chrome via CDP showing the current job, status, and worker controls
 - **Company-aware scheduling**: jobs are spread across employers to avoid submitting to the same company twice in a row
 
+> **Session note:** `--fresh-sessions` is currently a compatibility no-op. Worker profiles no longer copy cookies from your real Chrome profile; they start clean and restore saved ATS sessions instead.
+
 ```bash
 applypilot apply                                  # launch with defaults (5 workers)
 applypilot apply --workers 3 --min-score 9        # tune parallelism and score floor
 applypilot apply --url URL --dry-run              # test a single job without submitting
-applypilot apply --fresh-sessions                 # refresh Chrome cookies from your real profile first
 applypilot apply --sessions                       # list saved ATS sessions
 applypilot apply --clear-session workday          # clear a specific ATS session
 applypilot apply --no-hitl                        # skip HITL waits (for overnight runs)
@@ -327,7 +328,6 @@ applypilot apply --headless              # headless browser mode
 applypilot apply --url URL               # apply to one specific job
 applypilot apply --no-hitl               # skip HITL waits (for overnight runs)
 applypilot apply --no-focus              # prevent Chrome windows from stealing focus
-applypilot apply --fresh-sessions        # refresh Chrome cookies from your real profile
 applypilot apply --sessions              # list saved ATS sessions
 applypilot apply --clear-session NAME    # clear a specific ATS session (e.g. workday)
 applypilot apply --reset-failed          # reset all failed jobs for retry
